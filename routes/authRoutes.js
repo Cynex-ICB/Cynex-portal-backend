@@ -52,6 +52,10 @@ function isDepartmentStudentEmail(email) {
   return /^4al\d{2}ic\d{3}@aiet\.org\.in$/i.test(email);
 }
 
+function getClientUrl() {
+  return (process.env.CLIENT_URL || "https://www.cynexicb.com").replace(/\/$/, "");
+}
+
 router.post("/signup", async (req, res) => {
   try {
     const { name, collegeEmail, password, usn, semester } = req.body;
@@ -212,7 +216,7 @@ router.post("/forgot-password", async (req, res) => {
       user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
       await user.save({ validateBeforeSave: false });
 
-      const clientUrl = process.env.CLIENT_URL || "http://localhost:5173";
+      const clientUrl = getClientUrl();
       const resetUrl = `${clientUrl}/reset?resetToken=${resetToken}`;
 
       await sendEmail({
