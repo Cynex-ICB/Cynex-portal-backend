@@ -9,6 +9,7 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import cieRoutes from "./routes/cieRoutes.js";
+import { getUploadRoot } from "./utils/uploadStorage.js";
 
 dotenv.config({ path: ["server/.env", ".env"] });
 
@@ -49,7 +50,7 @@ app.options("/{*splat}", cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 app.use(
   "/uploads",
-  express.static("server/uploads", {
+  express.static(getUploadRoot(), {
     setHeaders(res, filePath) {
       res.setHeader("Content-Disposition", `attachment; filename="${path.basename(filePath)}"`);
     },
