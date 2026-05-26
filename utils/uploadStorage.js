@@ -3,7 +3,11 @@ import os from "os";
 import path from "path";
 
 function isVercelRuntime() {
-  return Boolean(process.env.VERCEL || process.env.VERCEL_ENV);
+  return Boolean(
+    process.env.VERCEL ||
+      process.env.VERCEL_ENV ||
+      process.cwd().startsWith("/var/task")
+  );
 }
 
 export function getUploadRoot() {
