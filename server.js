@@ -18,7 +18,6 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 const port = process.env.PORT || 5000;
-
 app.use(
   cors({
     origin(origin, callback) {
@@ -35,10 +34,9 @@ app.use(
       if (!origin || allowedOrigins.includes(origin)) {
         callback(null, true);
         return;
-        
       }
 
-      callback(new Error("Not allowed by CORS"));
+      callback(null, false);
     },
     credentials: true,
   })
