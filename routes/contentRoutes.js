@@ -4,14 +4,13 @@ import multer from "multer";
 import path from "path";
 import ContentPost from "../models/ContentPost.js";
 import protect, { adminOnly } from "../middleware/authMiddleware.js";
+import { ensureUploadDir } from "../utils/uploadStorage.js";
 
 const router = express.Router();
 const allowedTypes = new Set(["achievement", "placement", "internship", "activity-alert"]);
-const uploadDir = path.join(process.cwd(), "server", "uploads", "content");
+const uploadDir = ensureUploadDir("content");
 const allowedImageExtensions = new Set([".jpg", ".jpeg", ".png", ".webp"]);
 const allowedImageTypes = new Set(["image/jpeg", "image/png", "image/webp"]);
-
-fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination(req, file, callback) {

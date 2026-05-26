@@ -7,9 +7,10 @@ import Subject from "../models/Subject.js";
 import User from "../models/User.js";
 import protect, { adminOnly } from "../middleware/authMiddleware.js";
 import sendEmail from "../utils/sendEmail.js";
+import { ensureUploadDir } from "../utils/uploadStorage.js";
 
 const router = express.Router();
-const uploadDir = path.join(process.cwd(), "server", "uploads", "materials");
+const uploadDir = ensureUploadDir("materials");
 const allowedExtensions = new Set([".pdf", ".ppt", ".pptx"]);
 const allowedMimeTypes = new Set([
   "application/pdf",
@@ -22,8 +23,6 @@ const categoryLabels = {
   "study-material": "study material",
   notification: "notification",
 };
-
-fs.mkdirSync(uploadDir, { recursive: true });
 
 const storage = multer.diskStorage({
   destination(req, file, callback) {
