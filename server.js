@@ -18,33 +18,34 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 const port = process.env.PORT || 5000;
-app.use(
-  cors({
-    origin(origin, callback) {
-      const allowedOrigins = [
-        process.env.CLIENT_URL,
-        "https://www.cynexicb.com",
-        "https://cynexicb.com",
-        "http://localhost:5173",
-        "http://localhost:5174",
-        "http://127.0.0.1:5173",
-        "http://127.0.0.1:5174",
-      ].filter(Boolean);
+const corsOptions = {
+  origin(origin, callback) {
+    const allowedOrigins = [
+      process.env.CLIENT_URL,
+      "https://www.cynexicb.com",
+      "https://cynexicb.com",
+      "http://localhost:5173",
+      "http://localhost:5174",
+      "http://127.0.0.1:5173",
+      "http://127.0.0.1:5174",
+    ].filter(Boolean);
 
-      if (!origin || allowedOrigins.includes(origin)) {
-        callback(null, true);
-        return;
-      }
+    if (!origin || allowedOrigins.includes(origin)) {
+      callback(null, true);
+      return;
+    }
 
-      callback(null, false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization"],
-  })
-);
+    callback(null, false);
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  allowedHeaders: ["Content-Type", "Authorization"],
+  optionsSuccessStatus: 204,
+};
 
-app.options("*", cors());
+app.use(cors(corsOptions));
+
+app.options("/{*splat}", cors(corsOptions));
 app.use(express.json({ limit: "1mb" }));
 app.use(
   "/uploads",
