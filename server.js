@@ -39,8 +39,12 @@ app.use(
       callback(null, false);
     },
     credentials: true,
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
   })
 );
+
+app.options("*", cors());
 app.use(express.json({ limit: "1mb" }));
 app.use(
   "/uploads",
