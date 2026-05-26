@@ -7,6 +7,8 @@ import authRoutes from "./routes/authRoutes.js";
 import materialRoutes from "./routes/materialRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
+import userRoutes from "./routes/userRoutes.js";
+import cieRoutes from "./routes/cieRoutes.js";
 
 dotenv.config({ path: ["server/.env", ".env"] });
 
@@ -58,6 +60,8 @@ app.use("/api/auth", authRoutes);
 app.use("/api/materials", materialRoutes);
 app.use("/api/subjects", subjectRoutes);
 app.use("/api/content", contentRoutes);
+app.use("/api/users", userRoutes);
+app.use("/api/cie-marks", cieRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);

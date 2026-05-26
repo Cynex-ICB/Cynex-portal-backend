@@ -25,12 +25,20 @@ async function protect(req, res, next) {
 }
 
 function adminOnly(req, res, next) {
-  if (req.user?.role !== "admin") {
+  if (!["admin", "master-admin"].includes(req.user?.role)) {
     return res.status(403).json({ message: "Admin access required." });
   }
 
   next();
 }
 
-export { adminOnly };
+function masterAdminOnly(req, res, next) {
+  if (req.user?.role !== "master-admin") {
+    return res.status(403).json({ message: "Master admin access required." });
+  }
+
+  next();
+}
+
+export { adminOnly, masterAdminOnly };
 export default protect;

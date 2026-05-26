@@ -43,6 +43,32 @@ const contentPostSchema = new mongoose.Schema(
       trim: true,
       default: "",
     },
+    image: {
+      originalName: {
+        type: String,
+        default: "",
+      },
+      filename: {
+        type: String,
+        default: "",
+      },
+      url: {
+        type: String,
+        default: "",
+      },
+      mimetype: {
+        type: String,
+        default: "",
+      },
+      size: {
+        type: Number,
+        default: 0,
+      },
+      path: {
+        type: String,
+        default: "",
+      },
+    },
     link: {
       type: String,
       trim: true,

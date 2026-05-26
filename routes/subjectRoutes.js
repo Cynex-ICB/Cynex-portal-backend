@@ -1,6 +1,6 @@
 import express from "express";
 import Subject from "../models/Subject.js";
-import protect, { adminOnly } from "../middleware/authMiddleware.js";
+import protect, { masterAdminOnly } from "../middleware/authMiddleware.js";
 
 const router = express.Router();
 
@@ -58,8 +58,8 @@ router.get("/:id", protect, async (req, res) => {
   }
 });
 
-// Create a new subject (admin only)
-router.post("/", protect, adminOnly, async (req, res) => {
+// Create a new subject (master admin only)
+router.post("/", protect, masterAdminOnly, async (req, res) => {
   try {
     const { code, name, semester, credits, instructor, description } = req.body;
 
@@ -106,8 +106,8 @@ router.post("/", protect, adminOnly, async (req, res) => {
   }
 });
 
-// Update a subject (admin only)
-router.patch("/:id", protect, adminOnly, async (req, res) => {
+// Update a subject (master admin only)
+router.patch("/:id", protect, masterAdminOnly, async (req, res) => {
   try {
     const { name, credits, instructor, description } = req.body;
     const subject = await Subject.findById(req.params.id);
@@ -134,8 +134,8 @@ router.patch("/:id", protect, adminOnly, async (req, res) => {
   }
 });
 
-// Delete a subject (admin only)
-router.delete("/:id", protect, adminOnly, async (req, res) => {
+// Delete a subject (master admin only)
+router.delete("/:id", protect, masterAdminOnly, async (req, res) => {
   try {
     const subject = await Subject.findByIdAndDelete(req.params.id);
 

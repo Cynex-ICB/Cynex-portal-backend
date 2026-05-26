@@ -16,6 +16,25 @@ function getAdminEmails() {
     .filter(Boolean);
 }
 
+function getMasterAdminEmails() {
+  return (process.env.MASTER_ADMIN_EMAILS || process.env.HOD_EMAILS || "")
+    .split(",")
+    .map((email) => email.trim().toLowerCase())
+    .filter(Boolean);
+}
+
+function getRoleForEmail(email) {
+  if (getMasterAdminEmails().includes(email)) {
+    return "master-admin";
+  }
+
+  if (getAdminEmails().includes(email)) {
+    return "admin";
+  }
+
+  return "student";
+}
+
 function createToken(userId) {
   return jwt.sign({ id: userId }, process.env.JWT_SECRET, {
     expiresIn: process.env.JWT_EXPIRES_IN || "7d",
@@ -30,6 +49,10 @@ function serializeUser(user) {
     role: user.role,
     usn: user.usn || "",
     semester: user.semester || 1,
+    teacherId: user.teacherId || "",
+    coordinatorSemesters: user.coordinatorSemesters || [],
+    classCoordinatorName: user.classCoordinatorName || "",
+    mentorName: user.mentorName || "",
   };
 }
 
@@ -48,10 +71,6 @@ function createOtp() {
   return String(crypto.randomInt(100000, 1000000));
 }
 
-function isDepartmentStudentEmail(email) {
-  return /^4al\d{2}ic\d{3}@aiet\.org\.in$/i.test(email);
-}
-
 function getClientUrl() {
   return (process.env.CLIENT_URL || "https://www.cynexicb.com").replace(/\/$/, "");
 }
@@ -64,23 +83,18 @@ router.post("/signup", async (req, res) => {
       return res.status(400).json({ message: "Name, college email, and password are required." });
     }
 
-    if (!isDepartmentStudentEmail(collegeEmail)) {
-      return res.status(400).json({ 
-        message: "Use your department email format: 4ALxxICxxx@aiet.org.in." 
-      });
-    }
-
     if (password.length < 8) {
       return res.status(400).json({ message: "Password must be at least 8 characters." });
     }
 
     const normalizedEmail = collegeEmail.toLowerCase().trim();
+    const role = getRoleForEmail(normalizedEmail);
+
     const existingUser = await User.findOne({ collegeEmail: normalizedEmail });
     if (existingUser) {
       return res.status(409).json({ message: "An account with this college email already exists." });
     }
 
-    const role = getAdminEmails().includes(normalizedEmail) ? "admin" : "student";
     const semesterNumber = parseInt(semester);
 
     if (role === "student" && (!usn || Number.isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8)) {
@@ -186,8 +200,9 @@ router.post("/login", async (req, res) => {
       return res.status(401).json({ message: "Invalid college email or password." });
     }
 
-    if (user.role !== "admin" && getAdminEmails().includes(user.collegeEmail)) {
-      user.role = "admin";
+    const configuredRole = getRoleForEmail(user.collegeEmail);
+    if (user.role !== configuredRole && configuredRole !== "student") {
+      user.role = configuredRole;
       await user.save({ validateBeforeSave: false });
     }
 

@@ -1,1 +1,0 @@
-# Cynex-portal-backend

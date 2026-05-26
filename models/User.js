@@ -16,7 +16,6 @@ const userSchema = new mongoose.Schema(
       unique: true,
       lowercase: true,
       trim: true,
-      match: [/^4al\d{2}ic\d{3}@aiet\.org\.in$/i, "Please use a valid department email (e.g., 4AL23IC044@aiet.org.in)"],
     },
     usn: {
       type: String,
@@ -29,6 +28,59 @@ const userSchema = new mongoose.Schema(
       max: 8,
       default: 1,
     },
+    teacherId: {
+      type: String,
+      trim: true,
+      uppercase: true,
+      default: "",
+    },
+    coordinatorSemesters: {
+      type: [Number],
+      default: [],
+    },
+    classCoordinatorName: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      default: "",
+    },
+    classCoordinatorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: undefined,
+    },
+    mentorName: {
+      type: String,
+      trim: true,
+      maxlength: 80,
+      default: "",
+    },
+    mentorId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: undefined,
+    },
+    mentorAssignments: {
+      type: [
+        {
+          startUsn: {
+            type: String,
+            trim: true,
+            uppercase: true,
+          },
+          endUsn: {
+            type: String,
+            trim: true,
+            uppercase: true,
+          },
+          assignedAt: {
+            type: Date,
+            default: Date.now,
+          },
+        },
+      ],
+      default: [],
+    },
     password: {
       type: String,
       required: true,
@@ -37,7 +89,7 @@ const userSchema = new mongoose.Schema(
     },
     role: {
       type: String,
-      enum: ["student", "admin"],
+      enum: ["student", "admin", "master-admin"],
       default: "student",
     },
     passwordResetToken: {
