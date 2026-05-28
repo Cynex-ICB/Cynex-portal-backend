@@ -44,9 +44,20 @@ const corsOptions = {
   optionsSuccessStatus: 204,
 };
 
-app.use(cors(corsOptions));
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "https://cynexicb.com");
+  res.setHeader("Access-Control-Allow-Credentials", "true");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
 
-app.options("*", cors(corsOptions));
+  if (req.method === "OPTIONS") {
+    return res.status(204).end();
+  }
+
+  next();
+});
+
+app.use(cors(corsOptions));
 
 app.use(express.json({ limit: "1mb" }));
 app.use("/assets", express.static(path.join(process.cwd(), "assets")));

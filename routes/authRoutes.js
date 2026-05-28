@@ -7,7 +7,6 @@ import { buildPasswordResetEmail } from "../utils/emailTemplates.js";
 import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
-const STUDENT_EMAIL_ID_PATTERN = /^4AL\d{2}IC0\d{2}$/i;
 const PASSWORD_RESET_EXPIRY_MS = 5 * 60 * 1000;
 
 function parseEmailList(value = "") {
@@ -23,37 +22,6 @@ function getAdminEmails() {
 
 function getMasterAdminEmails() {
   return parseEmailList(process.env.MASTER_ADMIN_EMAILS || process.env.HOD_EMAILS);
-}
-
-function getEmailPatternExemptions() {
-  return new Set([
-    ...getAdminEmails(),
-    ...getMasterAdminEmails(),
-    ...parseEmailList(process.env.EMAIL_PATTERN_EXEMPT_EMAIL),
-    ...parseEmailList(process.env.EMAIL_PATTERN_EXEMPT_EMAILS),
-    ...parseEmailList(process.env.VITE_EMAIL_PATTERN_EXEMPT_EMAIL),
-    ...parseEmailList(process.env.VITE_EMAIL_PATTERN_EXEMPT_EMAILS),
-  ]);
-}
-
-function getEmailIdFromAddress(email) {
-  return email.split("@")[0] || "";
-}
-
-function isEmailPatternExempt(email) {
-  return getEmailPatternExemptions().has(email);
-}
-
-function hasAllowedStudentEmailId(email) {
-  return STUDENT_EMAIL_ID_PATTERN.test(getEmailIdFromAddress(email));
-}
-
-function isAllowedCollegeEmail(email) {
-  return isEmailPatternExempt(email) || hasAllowedStudentEmailId(email);
-}
-
-function isAdminRole(role) {
-  return ["admin", "master-admin"].includes(role);
 }
 
 function getRoleForEmail(email) {
@@ -105,29 +73,6 @@ function getClientUrl() {
   return (process.env.CLIENT_URL || "https://cynexicb.com").replace(/\/$/, "");
 }
 
-router.post("/email-access", async (req, res) => {
-  try {
-    const normalizedEmail = String(req.body?.collegeEmail || "").toLowerCase().trim();
-
-    if (!normalizedEmail) {
-      return res.json({ allowed: false });
-    }
-
-    if (isAllowedCollegeEmail(normalizedEmail)) {
-      return res.json({ allowed: true });
-    }
-
-    const adminUser = await User.findOne({
-      collegeEmail: normalizedEmail,
-      role: { $in: ["admin", "master-admin"] },
-    }).select("_id");
-
-    return res.json({ allowed: Boolean(adminUser) });
-  } catch {
-    return res.json({ allowed: false });
-  }
-});
-
 router.post("/signup", async (req, res) => {
   return res.status(410).json({ message: "Public signup is disabled. Contact the master admin for account access." });
 });
@@ -148,10 +93,6 @@ router.post("/login", async (req, res) => {
 
     const user = await User.findOne({ collegeEmail: normalizedEmail }).select("+password");
     if (!user || !(await user.matchPassword(password))) {
-      return res.status(401).json({ message: "Invalid college email or password." });
-    }
-
-    if (!isAllowedCollegeEmail(normalizedEmail) && !isAdminRole(user.role)) {
       return res.status(401).json({ message: "Invalid college email or password." });
     }
 
@@ -219,10 +160,6 @@ router.post("/reset-password/:token", async (req, res) => {
 
     if (!user) {
       return res.status(400).json({ message: "Reset link is invalid or expired." });
-    }
-
-    if (!isAllowedCollegeEmail(user.collegeEmail) && !isAdminRole(user.role)) {
-      return res.status(401).json({ message: "Invalid college email or password." });
     }
 
     user.password = password;
