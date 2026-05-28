@@ -199,9 +199,11 @@ router.post("/students", protect, masterAdminOnly, async (req, res) => {
       return res.status(400).json({ message: "Temporary password must be at least 8 characters." });
     }
 
-    const existingUser = await User.findOne({ collegeEmail: normalizedEmail });
+    const existingUser = await User.findOne({
+      $or: [{ collegeEmail: normalizedEmail }, { usn: normalizedUsn }],
+    });
     if (existingUser) {
-      return res.status(409).json({ message: "A user with this email already exists." });
+      return res.status(409).json({ message: "A user with this email or USN already exists." });
     }
 
     const student = await User.create({
@@ -216,11 +218,11 @@ router.post("/students", protect, masterAdminOnly, async (req, res) => {
     try {
       await sendStudentAccountNotification(student, password);
     } catch (emailError) {
-      console.error("Student account created, but notification email failed:", emailError.message);
+      await User.deleteOne({ _id: student._id });
+      console.error("Student account notification email failed. Account rolled back:", emailError.message);
 
-      return res.status(201).json({
-        student: serializeStudent(student),
-        warning: "Student account created, but the notification email could not be sent.",
+      return res.status(502).json({
+        message: "Student account was not created because the notification email could not be sent.",
       });
     }
 
@@ -296,17 +298,20 @@ router.post("/students/bulk", protect, masterAdminOnly, upload.single("file"), a
         password,
       });
 
-      let warning = "";
       try {
         await sendStudentAccountNotification(student, password);
       } catch (emailError) {
-        warning = "Account created, but notification email failed.";
+        await User.deleteOne({ _id: student._id });
+        skippedRows.push({
+          row: rowNumber,
+          reason: "Notification email failed, so the account was not created.",
+        });
         console.error(`Student ${student.collegeEmail} email failed:`, emailError.message);
+        continue;
       }
 
       createdStudents.push({
         ...serializeStudent(student),
-        warning,
       });
     }
 
