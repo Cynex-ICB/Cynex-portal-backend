@@ -93,6 +93,7 @@ router.post("/admins", protect, masterAdminOnly, async (req, res) => {
       });
     }
 
+    
     if (password.length < 8) {
       return res.status(400).json({ message: "Temporary password must be at least 8 characters." });
     }
