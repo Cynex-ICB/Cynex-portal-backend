@@ -31,6 +31,16 @@ function serializeTeacher(user) {
   };
 }
 
+function serializeAdmin(user) {
+  return {
+    id: user._id,
+    name: user.name,
+    collegeEmail: user.collegeEmail,
+    role: user.role,
+    teacherId: user.teacherId || "",
+  };
+}
+
 function isValidSemester(value) {
   const semester = Number(value);
   return Number.isInteger(semester) && semester >= 1 && semester <= 8;
@@ -58,6 +68,50 @@ router.get("/teachers", protect, masterAdminOnly, async (req, res) => {
     .select("name collegeEmail role teacherId coordinatorSemesters mentorAssignments");
 
   return res.json({ teachers: teachers.map(serializeTeacher) });
+});
+
+router.get("/admins", protect, masterAdminOnly, async (req, res) => {
+  const admins = await User.find({ role: { $in: ["admin", "master-admin"] } })
+    .sort({ role: 1, name: 1 })
+    .select("name collegeEmail role teacherId");
+
+  return res.json({ admins: admins.map(serializeAdmin) });
+});
+
+router.post("/admins", protect, masterAdminOnly, async (req, res) => {
+  try {
+    const { name, collegeEmail, teacherId, role, password } = req.body;
+    const normalizedEmail = String(collegeEmail || "").trim().toLowerCase();
+    const normalizedTeacherId = normalizeUsn(teacherId);
+    const adminRole = role === "master-admin" ? "master-admin" : "admin";
+
+    if (!name || !normalizedEmail || !normalizedTeacherId || !password) {
+      return res.status(400).json({
+        message: "Name, email, teacher employee ID, role, and temporary password are required.",
+      });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Temporary password must be at least 8 characters." });
+    }
+
+    const existingUser = await User.findOne({ collegeEmail: normalizedEmail });
+    if (existingUser) {
+      return res.status(409).json({ message: "A user with this email already exists." });
+    }
+
+    const admin = await User.create({
+      name: String(name).trim(),
+      collegeEmail: normalizedEmail,
+      teacherId: normalizedTeacherId,
+      role: adminRole,
+      password,
+    });
+
+    return res.status(201).json({ admin: serializeAdmin(admin) });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Could not create admin." });
+  }
 });
 
 router.post("/coordinators", protect, masterAdminOnly, async (req, res) => {
