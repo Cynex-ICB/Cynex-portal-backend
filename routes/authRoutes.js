@@ -5,6 +5,7 @@ import jwt from "jsonwebtoken";
 import SignupOtp from "../models/SignupOtp.js";
 import User from "../models/User.js";
 import protect from "../middleware/authMiddleware.js";
+import { buildPasswordResetEmail, buildSignupOtpEmail } from "../utils/emailTemplates.js";
 import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
@@ -187,14 +188,7 @@ router.post("/signup", async (req, res) => {
 
     await sendEmail({
       to: normalizedEmail,
-      subject: "Verify your CSE (ICB) portal account",
-      text: `Your verification OTP is ${otp}. It expires in 10 minutes.`,
-      html: `
-        <p>Hello ${name},</p>
-        <p>Your verification OTP is:</p>
-        <h2>${otp}</h2>
-        <p>This OTP expires in 10 minutes.</p>
-      `,
+      ...buildSignupOtpEmail({ name, otp }),
     });
 
     return res.status(200).json({
@@ -310,14 +304,7 @@ router.post("/forgot-password", async (req, res) => {
 
       await sendEmail({
         to: user.collegeEmail,
-        subject: "Reset your CSE (ICB) portal password",
-        text: `Use this link to reset your password: ${resetUrl}`,
-        html: `
-          <p>Hello ${user.name},</p>
-          <p>Use the link below to reset your password. It expires in 1 hour.</p>
-          <p><a href="${resetUrl}">Reset password</a></p>
-          <p>If you did not request this, you can ignore this email.</p>
-        `,
+        ...buildPasswordResetEmail({ name: user.name, resetUrl }),
       });
     }
 

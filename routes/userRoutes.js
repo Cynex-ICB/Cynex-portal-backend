@@ -1,6 +1,8 @@
 import express from "express";
 import User from "../models/User.js";
 import protect, { masterAdminOnly } from "../middleware/authMiddleware.js";
+import { buildTeacherAccountEmail } from "../utils/emailTemplates.js";
+import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
 
@@ -110,6 +112,26 @@ router.post("/admins", protect, masterAdminOnly, async (req, res) => {
       role: adminRole,
       password,
     });
+
+    try {
+      await sendEmail({
+        to: admin.collegeEmail,
+        ...buildTeacherAccountEmail({
+          name: admin.name,
+          email: admin.collegeEmail,
+          teacherId: admin.teacherId,
+          role: admin.role,
+          password,
+        }),
+      });
+    } catch (emailError) {
+      console.error("Admin account created, but notification email failed:", emailError.message);
+
+      return res.status(201).json({
+        admin: serializeAdmin(admin),
+        warning: "Admin account created, but the notification email could not be sent.",
+      });
+    }
 
     return res.status(201).json({ admin: serializeAdmin(admin) });
   } catch (error) {
