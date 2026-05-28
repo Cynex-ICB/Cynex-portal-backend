@@ -1,73 +1,66 @@
 name: Deploy Backend
 
 on:
-push:
-branches:
-- main
+  push:
+    branches:
+      - main
 
 env:
-FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-deploy:
-runs-on: ubuntu-latest
+  deploy:
+    runs-on: ubuntu-latest
 
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v5
 
-steps:
-  - name: Checkout repository
-    uses: actions/checkout@v5
+      - name: Setup Node.js
+        uses: actions/setup-node@v5
+        with:
+          node-version: 22
 
-  - name: Setup Node.js
-    uses: actions/setup-node@v5
-    with:
-      node-version: 22
+      - name: Configure SSH
+        run: |
+          mkdir -p ~/.ssh
 
-  - name: Configure SSH
-    run: |
-      mkdir -p ~/.ssh
+          printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
 
-      printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
 
-      chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
 
-      ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+      - name: Test SSH Connection
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+              "echo SSH SUCCESS"
 
-  - name: Test SSH Connection
-    run: |
-      ssh -o StrictHostKeyChecking=no \
-          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
-          "echo SSH SUCCESS"
+      - name: Deploy Backend
+        run: |
+          ssh -o StrictHostKeyChecking=no \
+              ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
 
-  - name: Deploy Backend
-    run: |
-      ssh -o StrictHostKeyChecking=no \
-          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+            set -e
 
-        set -e
+            cd ${{ secrets.APP_PATH }}
 
-        echo "Connected to server"
+            git fetch origin
 
-        cd ${{ secrets.APP_PATH }}
+            git reset --hard origin/main
 
-        echo "Fetching latest code..."
-        git fetch origin
+            npm install
 
-        git reset --hard origin/main
+            if pm2 describe "${{ secrets.PM2_PROCESS_NAME }}" > /dev/null
+            then
+              pm2 restart "${{ secrets.PM2_PROCESS_NAME }}"
+            else
+              pm2 start server.js --name "${{ secrets.PM2_PROCESS_NAME }}"
+            fi
 
-        echo "Installing dependencies..."
-        npm install
+            pm2 save
 
-        echo "Restarting PM2 process..."
+            echo "Deployment successful"
 
-        if pm2 describe "${{ secrets.PM2_PROCESS_NAME }}" > /dev/null
-        then
-          pm2 restart "${{ secrets.PM2_PROCESS_NAME }}"
-        else
-          pm2 start server.js --name "${{ secrets.PM2_PROCESS_NAME }}"
-        fi
-
-        pm2 save
-
-        echo "Deployment completed successfully"
-
-      EOF
+          EOF
