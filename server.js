@@ -23,7 +23,6 @@ const corsOptions = {
   origin(origin, callback) {
     const allowedOrigins = [
       process.env.CLIENT_URL,
-      "https://www.cynexicb.com",
       "https://cynexicb.com",
       "http://localhost:5173",
       "http://localhost:5174",
