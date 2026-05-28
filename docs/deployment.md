@@ -76,7 +76,7 @@ npm --version
 sudo npm install -g pm2
 
 # Set up PM2 to start on boot
-pm2 startup
+   pm2 startup
 # Follow the instructions output by the command (usually involves running a sudo command)
 ```
 
