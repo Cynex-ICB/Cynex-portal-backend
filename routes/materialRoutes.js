@@ -25,6 +25,16 @@ const categoryLabels = {
   notification: "notification",
 };
 
+function runInBackground(label, task) {
+  setImmediate(() => {
+    Promise.resolve()
+      .then(task)
+      .catch((error) => {
+        console.error(`${label} failed:`, error.message);
+      });
+  });
+}
+
 const upload = multer({
   storage: multer.memoryStorage(),
   limits: {
@@ -123,7 +133,9 @@ async function removeMaterialFile(file = {}) {
 }
 
 function getClientUrl() {
-  return (process.env.CLIENT_URL || "https://www.cynexicb.com").replace(/\/$/, "");
+  return (process.env.CLIENT_URL || "http://cynexicb.com")
+    .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
+    .replace(/\/$/, "");
 }
 
 function chunkList(items, chunkSize) {
@@ -272,19 +284,20 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
       { path: "createdBy", select: "name email" },
     ]);
 
-    try {
+    runInBackground("Academic content notification", async () => {
       const notification = await notifyStudentsAboutMaterial(populatedMaterial);
-      return res.status(201).json({ material: populatedMaterial, notification });
-    } catch (emailError) {
-      console.error("Material created, but notification email failed:", emailError.message);
-      return res.status(201).json({
-        material: populatedMaterial,
-        notification: {
-          notified: 0,
-          error: "Post was created, but email notification failed.",
-        },
-      });
-    }
+      console.log(
+        `Academic content notification queued post ${material._id}: ${notification.notified} recipient(s).`
+      );
+    });
+
+    return res.status(201).json({
+      material: populatedMaterial,
+      notification: {
+        queued: true,
+        message: "Post created. Student email notification is being sent in the background.",
+      },
+    });
   } catch (error) {
     await removeMaterialFile(blobFile);
     return res.status(500).json({ message: error.message || "Could not create post." });
@@ -298,8 +311,9 @@ router.delete("/:id", protect, adminOnly, async (req, res) => {
     return res.status(404).json({ message: "Post not found." });
   }
 
-  await removeMaterialFile(material.file);
+  const materialFile = material.file?.toObject ? material.file.toObject() : material.file;
   await material.deleteOne();
+  runInBackground("Material file cleanup", () => removeMaterialFile(materialFile));
   return res.json({ message: "Post deleted." });
 });
 

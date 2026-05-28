@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import Material from "../models/Material.js";
 import User from "../models/User.js";
 
 async function ensureUserIndexes() {
@@ -15,8 +16,20 @@ async function ensureUserIndexes() {
       { collegeEmail: 1 },
       { unique: true, name: "collegeEmail_1" }
     );
+    await User.collection.createIndex(
+      { role: 1, semester: 1 },
+      { name: "role_1_semester_1" }
+    );
+    await User.collection.createIndex(
+      { role: 1, usn: 1 },
+      { name: "role_1_usn_1" }
+    );
+    await Material.collection.createIndex(
+      { semester: 1, createdAt: -1 },
+      { name: "semester_1_createdAt_-1" }
+    );
   } catch (error) {
-    console.warn("Could not verify user indexes:", error.message);
+    console.warn("Could not verify database indexes:", error.message);
   }
 }
 

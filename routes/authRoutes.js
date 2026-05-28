@@ -16,12 +16,15 @@ function parseEmailList(value = "") {
     .filter(Boolean);
 }
 
+const adminEmails = parseEmailList(process.env.ADMIN_EMAILS);
+const masterAdminEmails = parseEmailList(process.env.MASTER_ADMIN_EMAILS || process.env.HOD_EMAILS);
+
 function getAdminEmails() {
-  return parseEmailList(process.env.ADMIN_EMAILS);
+  return adminEmails;
 }
 
 function getMasterAdminEmails() {
-  return parseEmailList(process.env.MASTER_ADMIN_EMAILS || process.env.HOD_EMAILS);
+  return masterAdminEmails;
 }
 
 function getRoleForEmail(email) {
