@@ -9,6 +9,7 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import cieRoutes from "./routes/cieRoutes.js";
+import aptitudeRoutes from "./routes/aptitudeRoutes.js";
 import { getUploadRoot } from "./utils/uploadStorage.js";
 
 dotenv.config({ path: ["server/.env", ".env"] });
@@ -38,7 +39,7 @@ const corsOptions = {
     callback(null, false);
   },
   credentials: true,
-  methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 204,
 };
@@ -67,6 +68,7 @@ app.use("/api/subjects", subjectRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/cie-marks", cieRoutes);
+app.use("/api/aptitude", aptitudeRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
