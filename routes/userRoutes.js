@@ -38,6 +38,8 @@ function serializeAdmin(user) {
     collegeEmail: user.collegeEmail,
     role: user.role,
     teacherId: user.teacherId || "",
+    coordinatorSemesters: user.coordinatorSemesters || [],
+    mentorAssignments: user.mentorAssignments || [],
   };
 }
 
@@ -73,7 +75,7 @@ router.get("/teachers", protect, masterAdminOnly, async (req, res) => {
 router.get("/admins", protect, masterAdminOnly, async (req, res) => {
   const admins = await User.find({ role: { $in: ["admin", "master-admin"] } })
     .sort({ role: 1, name: 1 })
-    .select("name collegeEmail role teacherId");
+    .select("name collegeEmail role teacherId coordinatorSemesters mentorAssignments");
 
   return res.json({ admins: admins.map(serializeAdmin) });
 });

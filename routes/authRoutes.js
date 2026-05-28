@@ -81,6 +81,7 @@ function serializeUser(user) {
     semester: user.semester || 1,
     teacherId: user.teacherId || "",
     coordinatorSemesters: user.coordinatorSemesters || [],
+    mentorAssignments: user.mentorAssignments || [],
     classCoordinatorName: user.classCoordinatorName || "",
     mentorName: user.mentorName || "",
   };
