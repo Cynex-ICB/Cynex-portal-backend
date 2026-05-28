@@ -2,7 +2,7 @@ node_modules
 dist
 .env
 server/.env
-server/uploads
+
 .DS_Store
 npm-debug.log*
 node_modules/

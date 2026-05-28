@@ -4,10 +4,10 @@ function hasSmtpConfig() {
   return Boolean(process.env.SMTP_HOST && process.env.SMTP_USER && process.env.SMTP_PASS);
 }
 
-async function sendEmail({ to, subject, html, text }) {
+async function sendEmail({ to, bcc, subject, html, text }) {
   if (!hasSmtpConfig()) {
     console.log("SMTP is not configured. Email content follows:");
-    console.log({ to, subject, text });
+    console.log({ to, bcc, subject, text });
     return { previewOnly: true };
   }
 
@@ -24,6 +24,7 @@ async function sendEmail({ to, subject, html, text }) {
   await transporter.sendMail({
     from: process.env.EMAIL_FROM || process.env.SMTP_USER,
     to,
+    bcc,
     subject,
     text,
     html,
