@@ -376,6 +376,54 @@ router.post("/coordinators", protect, masterAdminOnly, async (req, res) => {
   }
 });
 
+router.delete("/coordinators/:teacherUserId/:semester", protect, masterAdminOnly, async (req, res) => {
+  try {
+    const { teacherUserId, semester } = req.params;
+
+    if (!teacherUserId || !isValidSemester(semester)) {
+      return res.status(400).json({ message: "Teacher and semester are required." });
+    }
+
+    const semesterNumber = Number(semester);
+    if (semesterNumber < 3 || semesterNumber > 8) {
+      return res.status(400).json({ message: "Class coordinator can be removed only for semesters 3 to 8." });
+    }
+
+    const teacher = await User.findOne({ _id: teacherUserId, role: "admin" });
+    if (!teacher) {
+      return res.status(404).json({ message: "Teacher admin not found." });
+    }
+
+    teacher.coordinatorSemesters = (teacher.coordinatorSemesters || []).filter(
+      (currentSemester) => Number(currentSemester) !== semesterNumber
+    );
+    await teacher.save({ validateBeforeSave: false });
+
+    const studentUpdate = await User.updateMany(
+      {
+        role: "student",
+        semester: semesterNumber,
+        classCoordinatorId: teacher._id,
+      },
+      {
+        $unset: {
+          classCoordinatorId: "",
+        },
+        $set: {
+          classCoordinatorName: "",
+        },
+      }
+    );
+
+    return res.json({
+      teacher: serializeTeacher(teacher),
+      updatedStudents: studentUpdate.modifiedCount || 0,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Could not remove class coordinator." });
+  }
+});
+
 router.post("/mentors", protect, masterAdminOnly, async (req, res) => {
   try {
     const { teacherUserId, teacherId, startUsn, endUsn } = req.body;

@@ -2,7 +2,8 @@ import express from "express";
 import fs from "fs";
 import multer from "multer";
 import path from "path";
-import { del, put } from "@vercel/blob";
+import { Readable } from "stream";
+import { del, get, put } from "@vercel/blob";
 import Material from "../models/Material.js";
 import Subject from "../models/Subject.js";
 import User from "../models/User.js";
@@ -77,7 +78,7 @@ async function uploadMaterialToBlob(file) {
 
   const filename = getSafeMaterialFilename(file.originalname);
   const blob = await put(`materials/${filename}`, file.buffer, {
-    access: "public",
+    access: "private",
     contentType: file.mimetype,
     addRandomSuffix: true,
   });
@@ -91,6 +92,10 @@ async function uploadMaterialToBlob(file) {
     path: "",
     pathname: blob.pathname || "",
   };
+}
+
+function getDownloadFilename(file = {}) {
+  return String(file.originalName || file.filename || "material-file").replace(/["\r\n]/g, "");
 }
 
 async function removeMaterialFile(file = {}) {
@@ -199,6 +204,41 @@ router.get("/", protect, async (req, res) => {
     .populate("createdBy", "name collegeEmail");
 
   res.json({ materials });
+});
+
+router.get("/:id/file", protect, async (req, res) => {
+  try {
+    const material = await Material.findById(req.params.id);
+
+    if (!material?.file?.url) {
+      return res.status(404).json({ message: "File not found." });
+    }
+
+    if (req.user.role === "student" && material.semester !== req.user.semester) {
+      return res.status(403).json({ message: "You do not have access to this file." });
+    }
+
+    if (material.file.pathname || material.file.url?.startsWith("http")) {
+      const blob = await get(material.file.pathname || material.file.url, {
+        access: "private",
+      });
+
+      if (!blob?.stream) {
+        return res.status(404).json({ message: "File not found in Blob storage." });
+      }
+
+      res.setHeader("Content-Type", blob.blob.contentType || material.file.mimetype || "application/octet-stream");
+      if (blob.blob.size || material.file.size) {
+        res.setHeader("Content-Length", String(blob.blob.size || material.file.size));
+      }
+      res.setHeader("Content-Disposition", `attachment; filename="${getDownloadFilename(material.file)}"`);
+      return Readable.fromWeb(blob.stream).pipe(res);
+    }
+
+    return res.redirect(material.file.url);
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Could not download file." });
+  }
 });
 
 router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
