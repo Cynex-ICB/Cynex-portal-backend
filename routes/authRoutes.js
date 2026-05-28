@@ -14,8 +14,8 @@ const PASSWORD_RESET_EXPIRY_MS = 5 * 60 * 1000;
 
 function parseEmailList(value = "") {
   return value
-    .split(",")
-    .map((email) => email.trim().toLowerCase())
+    .split(/[,;\s]+/)
+    .map((email) => email.trim().replace(/^["']|["']$/g, "").toLowerCase())
     .filter(Boolean);
 }
 
@@ -31,7 +31,10 @@ function getEmailPatternExemptions() {
   return new Set([
     ...getAdminEmails(),
     ...getMasterAdminEmails(),
+    ...parseEmailList(process.env.EMAIL_PATTERN_EXEMPT_EMAIL),
     ...parseEmailList(process.env.EMAIL_PATTERN_EXEMPT_EMAILS),
+    ...parseEmailList(process.env.VITE_EMAIL_PATTERN_EXEMPT_EMAIL),
+    ...parseEmailList(process.env.VITE_EMAIL_PATTERN_EXEMPT_EMAILS),
   ]);
 }
 
