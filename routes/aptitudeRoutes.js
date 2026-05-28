@@ -61,14 +61,22 @@ async function serializeAssessment(assessment) {
     concept: assessment.concept,
     difficulty: assessment.difficulty,
     durationMinutes: assessment.durationMinutes,
+    duration_minutes: assessment.durationMinutes,
     totalMarks: assessment.totalMarks,
+    total_marks: assessment.totalMarks,
     passingMarks: assessment.passingMarks,
+    passing_marks: assessment.passingMarks,
     startTime: assessment.startTime,
+    start_time: assessment.startTime,
     endTime: assessment.endTime,
+    end_time: assessment.endTime,
     status: assessment.status,
     totalQuestions,
+    total_questions: totalQuestions,
     createdAt: assessment.createdAt,
+    created_at: assessment.createdAt,
     updatedAt: assessment.updatedAt,
+    updated_at: assessment.updatedAt,
   };
 }
 
@@ -76,12 +84,17 @@ function serializeQuestion(question, includeAnswer = false) {
   const base = {
     id: question._id,
     questionText: question.questionText,
+    question_text: question.questionText,
     options: {
       A: question.optionA,
       B: question.optionB,
       C: question.optionC,
       D: question.optionD,
     },
+    option_a: question.optionA,
+    option_b: question.optionB,
+    option_c: question.optionC,
+    option_d: question.optionD,
     concept: question.concept,
     difficulty: question.difficulty,
     marks: question.marks,
@@ -92,9 +105,11 @@ function serializeQuestion(question, includeAnswer = false) {
   return {
     ...base,
     correctOption: question.correctOption,
+    correct_option: question.correctOption,
     explanation: question.explanation,
     shortcut: question.shortcut || "",
     negativeMarks: question.negativeMarks,
+    negative_marks: question.negativeMarks,
   };
 }
 
@@ -252,15 +267,60 @@ router.get("/meta", (req, res) => {
 });
 
 router.get("/admin/dashboard", requireAdmin, async (req, res) => {
-  const [assessments, published, students, submittedAttempts, inProgressAttempts] = await Promise.all([
+  const [assessments, published, students, submittedAttempts, inProgressAttempts, submissions] = await Promise.all([
     AptitudeAssessment.countDocuments({ isDeleted: { $ne: true } }),
     AptitudeAssessment.countDocuments({ status: "published", isDeleted: { $ne: true } }),
     User.countDocuments({ role: "student" }),
     AptitudeAttempt.countDocuments({ status: "submitted" }),
     AptitudeAttempt.countDocuments({ status: "in_progress" }),
+    AptitudeAttempt.find({ status: "submitted" })
+      .populate("student", "name collegeEmail")
+      .populate("assessment", "title concept difficulty totalMarks passingMarks durationMinutes")
+      .sort({ submittedAt: -1 })
+      .limit(25),
   ]);
 
-  return res.json({ assessments, published, students, submittedAttempts, inProgressAttempts });
+  const analytics = submissions.map((attempt) => {
+    const assessment = attempt.assessment;
+    const started = attempt.startedAt ? new Date(attempt.startedAt).getTime() : null;
+    const submitted = attempt.submittedAt ? new Date(attempt.submittedAt).getTime() : null;
+    const timeTakenSeconds = started && submitted ? Math.max(0, Math.round((submitted - started) / 1000)) : 0;
+
+    return {
+      id: attempt._id,
+      student_name: attempt.student?.name || "Unknown",
+      email: attempt.student?.collegeEmail || "",
+      assessment_title: assessment?.title || "Assessment",
+      concept: assessment?.concept || "",
+      difficulty: assessment?.difficulty || "",
+      score: attempt.score,
+      total_marks: assessment?.totalMarks || 0,
+      percentage: attempt.percentage,
+      passing_marks: assessment?.passingMarks || 0,
+      passed: attempt.score >= (assessment?.passingMarks || 0),
+      time_taken_seconds: timeTakenSeconds,
+      duration_minutes: assessment?.durationMinutes || 0,
+      started_at: attempt.startedAt,
+      submitted_at: attempt.submittedAt,
+    };
+  });
+  const passedCount = analytics.filter((item) => item.passed).length;
+  const averagePercentage = analytics.length
+    ? Number((analytics.reduce((sum, item) => sum + item.percentage, 0) / analytics.length).toFixed(2))
+    : 0;
+
+  return res.json({
+    assessments,
+    published,
+    students,
+    submittedAttempts,
+    submitted_attempts: submittedAttempts,
+    inProgressAttempts,
+    in_progress_attempts: inProgressAttempts,
+    pass_rate: analytics.length ? Math.round((passedCount / analytics.length) * 100) : 0,
+    average_percentage: averagePercentage,
+    submissions: analytics,
+  });
 });
 
 router.get("/admin/assessments", requireAdmin, async (req, res) => {
@@ -370,6 +430,53 @@ router.patch("/admin/assessments/:id/status", requireAdmin, async (req, res) => 
   return res.json({ assessment: await serializeAssessment(assessment) });
 });
 
+router.put("/admin/assessments/:id/questions", requireAdmin, async (req, res) => {
+  const assessment = await AptitudeAssessment.findById(req.params.id);
+  if (!assessment || assessment.isDeleted) return res.status(404).json({ message: "Assessment not found." });
+
+  const validation = validateQuestions(req.body.questions, {
+    concept: assessment.concept,
+    difficulty: assessment.difficulty,
+    marks: 1,
+    negativeMarks: 0.25,
+  });
+
+  if (!validation.valid) {
+    return res.status(400).json({ message: "Question validation failed.", details: validation.errors });
+  }
+
+  await AptitudeQuestion.deleteMany({ assessment: assessment._id });
+  const questions = await AptitudeQuestion.insertMany(
+    validation.questions.map((question) => ({
+      ...question,
+      assessment: assessment._id,
+    }))
+  );
+
+  assessment.totalMarks = validation.questions.reduce((sum, question) => sum + question.marks, 0);
+  await assessment.save();
+
+  return res.json({
+    assessment: await serializeAssessment(assessment),
+    questions: questions.map((question) => serializeQuestion(question, true)),
+  });
+});
+
+router.patch("/admin/assessments/:id/extend-duration", requireAdmin, async (req, res) => {
+  const minutes = Number(req.body.minutes);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+    return res.status(400).json({ message: "Extension must be a whole number from 1 to 180 minutes." });
+  }
+
+  const assessment = await AptitudeAssessment.findById(req.params.id);
+  if (!assessment || assessment.isDeleted) return res.status(404).json({ message: "Assessment not found." });
+
+  assessment.durationMinutes += minutes;
+  await assessment.save();
+
+  return res.json({ assessment: await serializeAssessment(assessment) });
+});
+
 router.delete("/admin/assessments/:id", requireAdmin, async (req, res) => {
   const assessment = await AptitudeAssessment.findById(req.params.id);
   if (!assessment || assessment.isDeleted) return res.status(404).json({ message: "Assessment not found." });
@@ -400,9 +507,41 @@ router.get("/admin/assessments/:id/results", requireAdmin, async (req, res) => {
       percentage: attempt.percentage,
       status: attempt.status,
       passed: attempt.status === "submitted" && attempt.score >= assessment.passingMarks,
+      student_name: attempt.student?.name || "Unknown",
+      email: attempt.student?.collegeEmail || "",
+      extra_time_minutes: attempt.extraTimeMinutes || 0,
       startedAt: attempt.startedAt,
+      started_at: attempt.startedAt,
       submittedAt: attempt.submittedAt,
+      submitted_at: attempt.submittedAt,
     })),
+  });
+});
+
+router.patch("/admin/attempts/:attemptId/extend", requireAdmin, async (req, res) => {
+  const minutes = Number(req.body.minutes);
+  if (!Number.isInteger(minutes) || minutes < 1 || minutes > 180) {
+    return res.status(400).json({ message: "Extension must be a whole number from 1 to 180 minutes." });
+  }
+
+  const attempt = await AptitudeAttempt.findById(req.params.attemptId).populate("student", "name collegeEmail");
+  if (!attempt) return res.status(404).json({ message: "Attempt not found." });
+  if (attempt.status !== "in_progress") {
+    return res.status(400).json({ message: "Only in-progress attempts can be extended." });
+  }
+
+  attempt.extraTimeMinutes = (attempt.extraTimeMinutes || 0) + minutes;
+  await attempt.save();
+
+  return res.json({
+    attempt: {
+      id: attempt._id,
+      student_name: attempt.student?.name || "Unknown",
+      email: attempt.student?.collegeEmail || "",
+      status: attempt.status,
+      extra_time_minutes: attempt.extraTimeMinutes,
+      started_at: attempt.startedAt,
+    },
   });
 });
 
