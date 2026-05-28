@@ -70,7 +70,9 @@ function hashValue(value) {
 }
 
 function getClientUrl() {
-  return (process.env.CLIENT_URL || "https://cynexicb.com").replace(/\/$/, "");
+  return (process.env.CLIENT_URL || "http://cynexicb.com")
+    .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
+    .replace(/\/$/, "");
 }
 
 router.post("/email-access", async (req, res) => {

@@ -9,6 +9,7 @@ import Subject from "../models/Subject.js";
 import User from "../models/User.js";
 import protect, { adminOnly } from "../middleware/authMiddleware.js";
 import sendEmail from "../utils/sendEmail.js";
+import { buildAcademicContentEmail } from "../utils/emailTemplates.js";
 
 const router = express.Router();
 const allowedExtensions = new Set([".pdf", ".ppt", ".pptx"]);
@@ -152,24 +153,17 @@ async function notifyStudentsAboutMaterial(material) {
 
   const materialUrl = `${getClientUrl()}/materials`;
   const typeLabel = categoryLabels[material.category] || "update";
-  const subjectLine = `New ${typeLabel} posted for Semester ${material.semester}`;
-  const text = [
-    `A new ${typeLabel} has been posted for Semester ${material.semester}.`,
-    `Title: ${material.title}`,
-    `Description: ${material.description}`,
-    material.dueDate ? `Due date: ${new Date(material.dueDate).toLocaleDateString("en-IN")}` : "",
-    `Open the portal: ${materialUrl}`,
-  ]
-    .filter(Boolean)
-    .join("\n");
-  const html = `
-    <p>Hello,</p>
-    <p>A new <strong>${typeLabel}</strong> has been posted for Semester ${material.semester}.</p>
-    <p><strong>Title:</strong> ${material.title}</p>
-    <p><strong>Description:</strong> ${material.description}</p>
-    ${material.dueDate ? `<p><strong>Due date:</strong> ${new Date(material.dueDate).toLocaleDateString("en-IN")}</p>` : ""}
-    <p><a href="${materialUrl}">Open the portal</a></p>
-  `;
+  const emailContent = buildAcademicContentEmail({
+    title: material.title,
+    category: typeLabel,
+    description: material.description,
+    semester: material.semester,
+    subject: material.subject,
+    dueDate: material.dueDate,
+    link: material.link,
+    hasFile: Boolean(material.file?.url),
+    materialUrl,
+  });
 
   let previewOnly = false;
   const batches = chunkList(emails, 50);
@@ -178,9 +172,7 @@ async function notifyStudentsAboutMaterial(material) {
     const result = await sendEmail({
       to: process.env.EMAIL_FROM || process.env.SMTP_USER,
       bcc: batch,
-      subject: subjectLine,
-      text,
-      html,
+      ...emailContent,
     });
 
     previewOnly = previewOnly || Boolean(result.previewOnly);
@@ -281,7 +273,7 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
     ]);
 
     try {
-      const notification = await notifyStudentsAboutMaterial(material);
+      const notification = await notifyStudentsAboutMaterial(populatedMaterial);
       return res.status(201).json({ material: populatedMaterial, notification });
     } catch (emailError) {
       console.error("Material created, but notification email failed:", emailError.message);

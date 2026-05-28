@@ -1,5 +1,7 @@
 function getClientUrl() {
-  return (process.env.CLIENT_URL || "https://cynexicb.com").replace(/\/$/, "");
+  return (process.env.CLIENT_URL || "http://cynexicb.com")
+    .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
+    .replace(/\/$/, "");
 }
 
 function getPortalName() {
@@ -164,4 +166,80 @@ function buildStudentAccountEmail({ name, email, usn, semester, password }) {
   };
 }
 
-export { buildPasswordResetEmail, buildStudentAccountEmail, buildTeacherAccountEmail };
+function buildAcademicContentEmail({
+  title,
+  category,
+  description,
+  semester,
+  subject,
+  dueDate,
+  link,
+  hasFile,
+  materialUrl,
+}) {
+  const typeLabel = category || "academic update";
+  const semesterLabel = semester ? `Semester ${semester}` : "your semester";
+  const subjectLabel = subject
+    ? [subject.code, subject.name].filter(Boolean).join(" - ")
+    : "General post";
+  const formattedDueDate = dueDate
+    ? new Date(dueDate).toLocaleDateString("en-IN", {
+        day: "2-digit",
+        month: "short",
+        year: "numeric",
+      })
+    : "";
+
+  const details = [
+    detailRow("Content Type", typeLabel),
+    detailRow("Semester", semesterLabel),
+    detailRow("Subject", subjectLabel),
+    formattedDueDate ? detailRow("Due Date", formattedDueDate) : "",
+    link ? detailRow("Resource Link", "Available in the portal post") : "",
+    hasFile ? detailRow("Attachment", "Available for download in the portal") : "",
+  ]
+    .filter(Boolean)
+    .join("");
+
+  const text = [
+    `Hello,`,
+    `A new ${typeLabel} has been posted for ${semesterLabel}.`,
+    `Title: ${title}`,
+    `Subject: ${subjectLabel}`,
+    `Description: ${description}`,
+    formattedDueDate ? `Due date: ${formattedDueDate}` : "",
+    hasFile ? "Attachment: Available for download in the portal." : "",
+    link ? "Resource link: Available in the portal post." : "",
+    `Open the portal: ${materialUrl}`,
+  ]
+    .filter(Boolean)
+    .join("\n");
+
+  return {
+    subject: `New ${typeLabel} posted for ${semesterLabel}`,
+    text,
+    html: emailShell({
+      title: "New academic content posted",
+      preheader: `A new ${typeLabel} is available for ${semesterLabel}.`,
+      greeting: "Hello,",
+      intro: `A new ${typeLabel} has been published on the department portal. Please review the details below and open the portal for the full post.`,
+      children: `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:10px 0 6px;border-top:1px solid #e3eaf3;border-bottom:1px solid #e3eaf3;">
+          ${detailRow("Title", title)}
+          ${details}
+        </table>
+        <div style="margin:20px 0 0;padding:16px 18px;border-left:4px solid #1769aa;border-radius:8px;background:#f5f9fd;">
+          <div style="margin:0 0 6px;font-size:13px;line-height:18px;color:#6d7b91;font-weight:800;text-transform:uppercase;">Description</div>
+          <p style="margin:0;font-size:15px;line-height:24px;color:#34445f;">${escapeHtml(description)}</p>
+        </div>
+        ${primaryButton("Open Academic Content", materialUrl)}`,
+      footerNote: "Please sign in to the portal to view links, download files, and track assignment due dates.",
+    }),
+  };
+}
+
+export {
+  buildAcademicContentEmail,
+  buildPasswordResetEmail,
+  buildStudentAccountEmail,
+  buildTeacherAccountEmail,
+};
