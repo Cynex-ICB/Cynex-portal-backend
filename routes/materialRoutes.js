@@ -2,15 +2,14 @@ import express from "express";
 import fs from "fs";
 import multer from "multer";
 import path from "path";
+import { del, put } from "@vercel/blob";
 import Material from "../models/Material.js";
 import Subject from "../models/Subject.js";
 import User from "../models/User.js";
 import protect, { adminOnly } from "../middleware/authMiddleware.js";
 import sendEmail from "../utils/sendEmail.js";
-import { ensureUploadDir } from "../utils/uploadStorage.js";
 
 const router = express.Router();
-const uploadDir = ensureUploadDir("materials");
 const allowedExtensions = new Set([".pdf", ".ppt", ".pptx"]);
 const allowedMimeTypes = new Set([
   "application/pdf",
@@ -24,23 +23,8 @@ const categoryLabels = {
   notification: "notification",
 };
 
-const storage = multer.diskStorage({
-  destination(req, file, callback) {
-    callback(null, uploadDir);
-  },
-  filename(req, file, callback) {
-    const extension = path.extname(file.originalname).toLowerCase();
-    const safeBaseName = path
-      .basename(file.originalname, extension)
-      .replace(/[^a-z0-9]+/gi, "-")
-      .replace(/^-|-$/g, "")
-      .toLowerCase();
-    callback(null, `${Date.now()}-${safeBaseName || "material"}${extension}`);
-  },
-});
-
 const upload = multer({
-  storage,
+  storage: multer.memoryStorage(),
   limits: {
     fileSize: 25 * 1024 * 1024,
   },
@@ -71,7 +55,56 @@ function uploadMaterialFile(req, res, next) {
   });
 }
 
-function removeUploadedFile(filePath) {
+function getSafeMaterialFilename(originalName) {
+  const extension = path.extname(originalName).toLowerCase();
+  const safeBaseName = path
+    .basename(originalName, extension)
+    .replace(/[^a-z0-9]+/gi, "-")
+    .replace(/^-|-$/g, "")
+    .toLowerCase();
+
+  return `${Date.now()}-${safeBaseName || "material"}${extension}`;
+}
+
+async function uploadMaterialToBlob(file) {
+  if (!file) {
+    return undefined;
+  }
+
+  if (!process.env.BLOB_READ_WRITE_TOKEN) {
+    throw new Error("BLOB_READ_WRITE_TOKEN is missing. Add your Vercel Blob read/write token to the backend environment.");
+  }
+
+  const filename = getSafeMaterialFilename(file.originalname);
+  const blob = await put(`materials/${filename}`, file.buffer, {
+    access: "public",
+    contentType: file.mimetype,
+    addRandomSuffix: true,
+  });
+
+  return {
+    originalName: file.originalname,
+    filename,
+    url: blob.url,
+    mimetype: file.mimetype,
+    size: file.size,
+    path: "",
+    pathname: blob.pathname || "",
+  };
+}
+
+async function removeMaterialFile(file = {}) {
+  if (file.pathname || file.url?.startsWith("http")) {
+    try {
+      await del(file.pathname || file.url);
+    } catch (error) {
+      console.error("Could not delete Vercel Blob material file:", error.message);
+    }
+
+    return;
+  }
+
+  const filePath = file.path;
   if (!filePath) {
     return;
   }
@@ -169,11 +202,12 @@ router.get("/", protect, async (req, res) => {
 });
 
 router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
+  let blobFile;
+
   try {
     const { title, category, description, link, dueDate, subject, semester } = req.body;
 
     if (!title || !category || !description) {
-      removeUploadedFile(req.file?.path);
       return res.status(400).json({ message: "Title, type, and description are required." });
     }
 
@@ -182,11 +216,12 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
     if (subject) {
       const selectedSubject = await Subject.findById(subject);
       if (!selectedSubject) {
-        removeUploadedFile(req.file?.path);
         return res.status(400).json({ message: "Selected subject was not found." });
       }
       resolvedSemester = selectedSubject.semester;
     }
+
+    blobFile = await uploadMaterialToBlob(req.file);
 
     const material = await Material.create({
       title,
@@ -196,16 +231,7 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
       semester: resolvedSemester,
       link,
       dueDate: dueDate || undefined,
-      file: req.file
-        ? {
-            originalName: req.file.originalname,
-            filename: req.file.filename,
-            url: `/uploads/materials/${req.file.filename}`,
-            mimetype: req.file.mimetype,
-            size: req.file.size,
-            path: req.file.path,
-          }
-        : undefined,
+      file: blobFile,
       createdBy: req.user._id,
     });
 
@@ -228,7 +254,7 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
       });
     }
   } catch (error) {
-    removeUploadedFile(req.file?.path);
+    await removeMaterialFile(blobFile);
     return res.status(500).json({ message: error.message || "Could not create post." });
   }
 });
@@ -240,7 +266,7 @@ router.delete("/:id", protect, adminOnly, async (req, res) => {
     return res.status(404).json({ message: "Post not found." });
   }
 
-  removeUploadedFile(material.file?.path);
+  await removeMaterialFile(material.file);
   await material.deleteOne();
   return res.json({ message: "Post deleted." });
 });
