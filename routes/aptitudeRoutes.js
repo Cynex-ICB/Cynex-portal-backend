@@ -1,25 +1,23 @@
 import express from "express";
+import multer from "multer";
 import AptitudeAnswer from "../models/AptitudeAnswer.js";
 import AptitudeAssessment from "../models/AptitudeAssessment.js";
 import AptitudeAttempt from "../models/AptitudeAttempt.js";
 import AptitudeQuestion from "../models/AptitudeQuestion.js";
 import User from "../models/User.js";
 import protect from "../middleware/authMiddleware.js";
+import {
+  APTITUDE_CONCEPTS,
+  generateAptitudeAssessmentJson,
+} from "../utils/aptitudeAiService.js";
+import { extractAptitudeFileText } from "../utils/aptitudeFileText.js";
 
 const router = express.Router();
-const concepts = [
-  "Percentages",
-  "Profit and Loss",
-  "Ratio and Proportion",
-  "Time and Work",
-  "Time, Speed and Distance",
-  "Number System",
-  "Simplification",
-  "Averages",
-  "Logical Reasoning",
-  "Verbal Ability",
-  "Data Interpretation",
-];
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 8 * 1024 * 1024 },
+});
+const concepts = [...APTITUDE_CONCEPTS, "All Concepts"];
 const difficulties = ["Easy", "Medium", "Hard", "Mixed"];
 const statuses = ["draft", "published"];
 const optionKeys = ["A", "B", "C", "D"];
@@ -156,6 +154,7 @@ function parseAssessmentPayload(body) {
 
   if (!title) errors.push("Assessment title is required.");
   if (!concept) errors.push("Concept is required.");
+  if (concept && !concepts.includes(concept)) errors.push("Invalid concept.");
   if (!difficulties.includes(difficulty)) errors.push("Difficulty must be Easy, Medium, Hard, or Mixed.");
   if (durationMinutes < 1) errors.push("Duration must be at least 1 minute.");
   if (passingMarks < 0) errors.push("Passing marks cannot be negative.");
@@ -174,6 +173,29 @@ function parseAssessmentPayload(body) {
       status,
       startTime: parseDate(body.startTime ?? body.start_time),
       endTime: parseDate(body.endTime ?? body.end_time),
+    },
+    errors,
+  };
+}
+
+function parseGenerationPayload(body) {
+  const { config, errors } = parseAssessmentPayload(body);
+  const generationMode = String(body.generationMode || body.generation_mode || "fast").toLowerCase();
+  const questionCount = parseNumber(body.questionCount ?? body.question_count);
+
+  if (!["fast", "ai"].includes(generationMode)) errors.push("Generation mode must be fast or ai.");
+  if (!Number.isInteger(questionCount) || questionCount < 1) {
+    errors.push("Question count must be at least 1.");
+  }
+  if (questionCount > 60) errors.push("Question count cannot exceed 60.");
+  if (config.marks <= 0) errors.push("Marks per question must be greater than 0.");
+  if (config.negativeMarks < 0) errors.push("Negative marks cannot be negative.");
+
+  return {
+    config: {
+      ...config,
+      generationMode,
+      questionCount,
     },
     errors,
   };
@@ -269,6 +291,60 @@ router.post("/admin/assessments", requireAdmin, async (req, res) => {
   );
 
   return res.status(201).json({ assessment: await serializeAssessment(assessment) });
+});
+
+router.post("/admin/assessments/generate", requireAdmin, upload.single("file"), async (req, res) => {
+  try {
+    const { config, errors } = parseGenerationPayload(req.body);
+
+    if (errors.length) {
+      return res.status(400).json({ message: "Validation failed.", details: errors });
+    }
+
+    const fileContext = await extractAptitudeFileText(req.file);
+    const generated = await generateAptitudeAssessmentJson(config, fileContext);
+    const validation = validateQuestions(generated.questions, config);
+
+    if (!validation.valid) {
+      return res.status(400).json({
+        message: "Generated questions failed validation.",
+        details: validation.errors.slice(0, 12),
+      });
+    }
+
+    const totalMarks = validation.questions.reduce((sum, question) => sum + question.marks, 0);
+    const assessment = await AptitudeAssessment.create({
+      title: config.title || generated.assessment_title,
+      description: config.description || (fileContext ? "Generated using uploaded source material." : ""),
+      concept: config.concept,
+      difficulty: config.difficulty,
+      durationMinutes: config.durationMinutes,
+      totalMarks,
+      passingMarks: config.passingMarks,
+      startTime: config.startTime,
+      endTime: config.endTime,
+      status: config.status,
+      createdBy: req.user._id,
+    });
+
+    const questions = await AptitudeQuestion.insertMany(
+      validation.questions.map((question) => ({
+        ...question,
+        assessment: assessment._id,
+      }))
+    );
+
+    return res.status(201).json({
+      assessment: await serializeAssessment(assessment),
+      questions: questions.map((question) => serializeQuestion(question, true)),
+      generationMode: config.generationMode,
+    });
+  } catch (error) {
+    return res.status(error.statusCode || 500).json({
+      message: error.message || "AI generation failed.",
+      details: error.details || [],
+    });
+  }
 });
 
 router.get("/admin/assessments/:id", requireAdmin, async (req, res) => {
