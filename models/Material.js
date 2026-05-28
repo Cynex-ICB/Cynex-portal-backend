@@ -60,6 +60,10 @@ const materialSchema = new mongoose.Schema(
         type: String,
         default: "",
       },
+      pathname: {
+        type: String,
+        default: "",
+      },
     },
     dueDate: {
       type: Date,
