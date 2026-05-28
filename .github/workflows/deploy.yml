@@ -1,62 +1,74 @@
-name: Deploy to VPS
+name: Deploy Backend
 
 on:
-  push:
-    branches: [ main ]
+push:
+branches:
+- main
+
+env:
+FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
+deploy:
+runs-on: ubuntu-latest
 
-      - name: Setup Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '22.22.1'  # Using Node.js 20 LTS, adjust if your project requires a different version
+```
+steps:
+  - name: Checkout repository
+    uses: actions/checkout@v5
 
-      - name: Install dependencies
-        run: npm ci
+  - name: Setup Node.js
+    uses: actions/setup-node@v5
+    with:
+      node-version: 22
 
-      - name: Deploy to VPS via SSH
-        env:
-          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
-          SERVER_USER: ${{ secrets.SERVER_USER }}
-          SERVER_HOST: ${{ secrets.SERVER_HOST }}
-          SERVER_PORT: ${{ secrets.SERVER_PORT }}
-          APP_PATH: ${{ secrets.APP_PATH }}
-          PM2_PROCESS_NAME: ${{ secrets.PM2_PROCESS_NAME }}
-        run: |
-          # Set up SSH
-          mkdir -p ~/.ssh
-          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
-          chmod 600 ~/.ssh/id_rsa
-          ssh-keyscan -p $SERVER_PORT $SERVER_HOST >> ~/.ssh/known_hosts
+  - name: Configure SSH
+    run: |
+      mkdir -p ~/.ssh
 
-          # Deploy commands
-          ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST << EOF
-            set -e
-            echo "Deploying to $APP_PATH"
-            cd $APP_PATH
-            
-            # Pull latest code
-            git fetch origin
-            git reset --hard origin/main
-            
-            # Install dependencies
-            npm ci --production
-            
-            # Restart PM2 process
-            if pm2 list | grep -q "$PM2_PROCESS_NAME"; then
-              echo "Restarting existing PM2 process: $PM2_PROCESS_NAME"
-              pm2 restart $PM2_PROCESS_NAME
-            else
-              echo "Starting new PM2 process: $PM2_PROCESS_NAME"
-              pm2 start server.js --name $PM2_PROCESS_NAME
-              pm2 save
-            fi
-            
-            # Show status
-            pm2 show $PM2_PROCESS_NAME
-          EOF
+      printf "%s" "${{ secrets.SSH_PRIVATE_KEY }}" > ~/.ssh/id_rsa
+
+      chmod 600 ~/.ssh/id_rsa
+
+      ssh-keyscan -H ${{ secrets.SERVER_HOST }} >> ~/.ssh/known_hosts
+
+  - name: Test SSH Connection
+    run: |
+      ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} \
+          "echo SSH SUCCESS"
+
+  - name: Deploy Backend
+    run: |
+      ssh -o StrictHostKeyChecking=no \
+          ${{ secrets.SERVER_USER }}@${{ secrets.SERVER_HOST }} << 'EOF'
+
+        set -e
+
+        echo "Connected to server"
+
+        cd ${{ secrets.APP_PATH }}
+
+        echo "Fetching latest code..."
+        git fetch origin
+
+        git reset --hard origin/main
+
+        echo "Installing dependencies..."
+        npm install
+
+        echo "Restarting PM2 process..."
+
+        if pm2 describe "${{ secrets.PM2_PROCESS_NAME }}" > /dev/null
+        then
+          pm2 restart "${{ secrets.PM2_PROCESS_NAME }}"
+        else
+          pm2 start server.js --name "${{ secrets.PM2_PROCESS_NAME }}"
+        fi
+
+        pm2 save
+
+        echo "Deployment completed successfully"
+
+      EOF
+```
