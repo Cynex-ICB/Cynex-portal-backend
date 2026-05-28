@@ -10,6 +10,7 @@ import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
 const STUDENT_EMAIL_ID_PATTERN = /^4AL\d{2}IC0\d{2}$/i;
+const PASSWORD_RESET_EXPIRY_MS = 5 * 60 * 1000;
 
 function parseEmailList(value = "") {
   return value
@@ -296,7 +297,7 @@ router.post("/forgot-password", async (req, res) => {
       const hashedToken = hashValue(resetToken);
 
       user.passwordResetToken = hashedToken;
-      user.passwordResetExpires = Date.now() + 60 * 60 * 1000;
+      user.passwordResetExpires = Date.now() + PASSWORD_RESET_EXPIRY_MS;
       await user.save({ validateBeforeSave: false });
 
       const clientUrl = getClientUrl();

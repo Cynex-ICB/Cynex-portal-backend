@@ -120,12 +120,12 @@ function buildSignupOtpEmail({ name, otp }) {
 function buildPasswordResetEmail({ name, resetUrl }) {
   return {
     subject: "Reset your Cynex portal password",
-    text: `Hello ${name}, use this link to reset your Cynex portal password: ${resetUrl}. It expires in 1 hour.`,
+    text: `Hello ${name}, use this link to reset your Cynex portal password: ${resetUrl}. It expires in 5 minutes.`,
     html: emailShell({
       title: "Reset your password",
       preheader: "Use this secure link to reset your Cynex portal password.",
       greeting: `Hello ${name},`,
-      intro: "We received a request to reset your portal password. Use the button below within 1 hour to choose a new password.",
+      intro: "We received a request to reset your portal password. Use the button below within 5 minutes to choose a new password.",
       children: `${primaryButton("Reset Password", resetUrl)}
         <p style="margin:0;font-size:13px;line-height:21px;color:#6d7b91;">If the button does not work, paste this link into your browser:<br>
         <a href="${escapeHtml(resetUrl)}" style="color:#1769aa;word-break:break-all;">${escapeHtml(resetUrl)}</a></p>`,
