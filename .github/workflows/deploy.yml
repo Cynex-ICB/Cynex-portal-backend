@@ -71,4 +71,3 @@ steps:
         echo "Deployment completed successfully"
 
       EOF
-```
