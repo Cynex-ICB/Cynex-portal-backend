@@ -3,7 +3,7 @@ function getClientUrl() {
 }
 
 function getPortalName() {
-  return process.env.PORTAL_NAME || "Cynex CSE (ICB) Portal";
+  return process.env.PORTAL_NAME || "Cynex  Portal";
 }
 
 function getLogoUrl() {

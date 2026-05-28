@@ -73,6 +73,10 @@ function getClientUrl() {
   return (process.env.CLIENT_URL || "https://cynexicb.com").replace(/\/$/, "");
 }
 
+router.post("/email-access", async (req, res) => {
+  return res.json({ allowed: true });
+});
+
 router.post("/signup", async (req, res) => {
   return res.status(410).json({ message: "Public signup is disabled. Contact the master admin for account access." });
 });
