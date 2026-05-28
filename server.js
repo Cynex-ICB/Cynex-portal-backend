@@ -20,11 +20,13 @@ if (!process.env.JWT_SECRET) {
 
 const app = express();
 const port = process.env.PORT || 5000;
+const isVercel = Boolean(process.env.VERCEL);
 const corsOptions = {
   origin(origin, callback) {
     const allowedOrigins = [
       process.env.CLIENT_URL,
       "https://cynexicb.com",
+      "https://www.cynexicb.com",
       "http://localhost:5173",
       "http://localhost:5174",
       "http://127.0.0.1:5173",
@@ -77,6 +79,11 @@ app.use((err, req, res, next) => {
 
 connectDB()
   .then(() => {
+    if (isVercel) {
+      console.log("API server initialized for Vercel.");
+      return;
+    }
+
     app.listen(port, () => {
       console.log(`API server running on http://localhost:${port}`);
     });
@@ -85,3 +92,5 @@ connectDB()
     console.error("Could not start server:", error.message);
     process.exit(1);
   });
+
+export default app;
