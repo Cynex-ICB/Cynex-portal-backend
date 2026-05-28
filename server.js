@@ -72,6 +72,12 @@ app.use("/api/users", userRoutes);
 app.use("/api/cie-marks", cieRoutes);
 app.use("/api/aptitude", aptitudeRoutes);
 
+app.use("/api/{*splat}", (req, res) => {
+  res.status(404).json({
+    message: `API route not found: ${req.method} ${req.originalUrl}`,
+  });
+});
+
 app.use((err, req, res, next) => {
   console.error(err);
   res.status(500).json({ message: "Server error." });
