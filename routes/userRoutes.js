@@ -1,10 +1,16 @@
 import express from "express";
+import multer from "multer";
+import XLSX from "xlsx";
 import User from "../models/User.js";
 import protect, { masterAdminOnly } from "../middleware/authMiddleware.js";
-import { buildTeacherAccountEmail } from "../utils/emailTemplates.js";
+import { buildStudentAccountEmail, buildTeacherAccountEmail } from "../utils/emailTemplates.js";
 import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
+const upload = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024 },
+});
 
 function serializeStudent(user) {
   return {
@@ -52,6 +58,39 @@ function isValidSemester(value) {
 
 function normalizeUsn(value) {
   return String(value || "").trim().toUpperCase();
+}
+
+function normalizeExcelHeader(value) {
+  return String(value || "")
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]/g, "");
+}
+
+function getExcelValue(row, expectedHeader) {
+  const normalizedExpectedHeader = normalizeExcelHeader(expectedHeader);
+  const entry = Object.entries(row).find(
+    ([key]) => normalizeExcelHeader(key) === normalizedExpectedHeader
+  );
+
+  return entry ? String(entry[1] || "").trim() : "";
+}
+
+function createStudentTempPassword(usn) {
+  return `DeptICB@${normalizeUsn(usn)}`;
+}
+
+async function sendStudentAccountNotification(student, password) {
+  await sendEmail({
+    to: student.collegeEmail,
+    ...buildStudentAccountEmail({
+      name: student.name,
+      email: student.collegeEmail,
+      usn: student.usn,
+      semester: student.semester,
+      password,
+    }),
+  });
 }
 
 function isUsnInRange(usn, startUsn, endUsn) {
@@ -136,6 +175,156 @@ router.post("/admins", protect, masterAdminOnly, async (req, res) => {
     return res.status(201).json({ admin: serializeAdmin(admin) });
   } catch (error) {
     return res.status(500).json({ message: error.message || "Could not create admin." });
+  }
+});
+
+router.post("/students", protect, masterAdminOnly, async (req, res) => {
+  try {
+    const { name, collegeEmail, usn, semester, password } = req.body;
+    const normalizedEmail = String(collegeEmail || "").trim().toLowerCase();
+    const normalizedUsn = normalizeUsn(usn);
+    const semesterNumber = Number(semester);
+
+    if (!name || !normalizedEmail || !normalizedUsn || !password || !isValidSemester(semesterNumber)) {
+      return res.status(400).json({
+        message: "Name, email, USN, semester, and temporary password are required.",
+      });
+    }
+
+    if (semesterNumber < 3 || semesterNumber > 8) {
+      return res.status(400).json({ message: "Student semester must be between 3 and 8." });
+    }
+
+    if (password.length < 8) {
+      return res.status(400).json({ message: "Temporary password must be at least 8 characters." });
+    }
+
+    const existingUser = await User.findOne({ collegeEmail: normalizedEmail });
+    if (existingUser) {
+      return res.status(409).json({ message: "A user with this email already exists." });
+    }
+
+    const student = await User.create({
+      name: String(name).trim(),
+      collegeEmail: normalizedEmail,
+      usn: normalizedUsn,
+      semester: semesterNumber,
+      role: "student",
+      password,
+    });
+
+    try {
+      await sendStudentAccountNotification(student, password);
+    } catch (emailError) {
+      console.error("Student account created, but notification email failed:", emailError.message);
+
+      return res.status(201).json({
+        student: serializeStudent(student),
+        warning: "Student account created, but the notification email could not be sent.",
+      });
+    }
+
+    return res.status(201).json({ student: serializeStudent(student) });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Could not create student." });
+  }
+});
+
+router.post("/students/bulk", protect, masterAdminOnly, upload.single("file"), async (req, res) => {
+  try {
+    const semesterNumber = Number(req.body.semester);
+
+    if (!isValidSemester(semesterNumber) || semesterNumber < 3 || semesterNumber > 8) {
+      return res.status(400).json({ message: "Student semester must be between 3 and 8." });
+    }
+
+    if (!req.file) {
+      return res.status(400).json({ message: "Upload an Excel file with student name, usn, and emailid columns." });
+    }
+
+    const workbook = XLSX.read(req.file.buffer, { type: "buffer" });
+    const sheetName = workbook.SheetNames[0];
+    const rows = XLSX.utils.sheet_to_json(workbook.Sheets[sheetName], {
+      defval: "",
+      raw: false,
+    });
+
+    if (!rows.length) {
+      return res.status(400).json({ message: "The uploaded Excel sheet does not contain student rows." });
+    }
+
+    const createdStudents = [];
+    const skippedRows = [];
+    const seenEmails = new Set();
+    const seenUsns = new Set();
+
+    for (const [index, row] of rows.entries()) {
+      const rowNumber = index + 2;
+      const name = getExcelValue(row, "student name");
+      const normalizedUsn = normalizeUsn(getExcelValue(row, "usn"));
+      const normalizedEmail = getExcelValue(row, "emailid").toLowerCase();
+      const password = createStudentTempPassword(normalizedUsn);
+
+      if (!name || !normalizedUsn || !normalizedEmail) {
+        skippedRows.push({ row: rowNumber, reason: "Missing student name, usn, or emailid." });
+        continue;
+      }
+
+      if (seenEmails.has(normalizedEmail) || seenUsns.has(normalizedUsn)) {
+        skippedRows.push({ row: rowNumber, reason: "Duplicate emailid or USN in uploaded sheet." });
+        continue;
+      }
+
+      seenEmails.add(normalizedEmail);
+      seenUsns.add(normalizedUsn);
+
+      const existingUser = await User.findOne({
+        $or: [{ collegeEmail: normalizedEmail }, { usn: normalizedUsn }],
+      }).select("collegeEmail usn");
+
+      if (existingUser) {
+        skippedRows.push({ row: rowNumber, reason: "A user with this emailid or USN already exists." });
+        continue;
+      }
+
+      const student = await User.create({
+        name,
+        collegeEmail: normalizedEmail,
+        usn: normalizedUsn,
+        semester: semesterNumber,
+        role: "student",
+        password,
+      });
+
+      let warning = "";
+      try {
+        await sendStudentAccountNotification(student, password);
+      } catch (emailError) {
+        warning = "Account created, but notification email failed.";
+        console.error(`Student ${student.collegeEmail} email failed:`, emailError.message);
+      }
+
+      createdStudents.push({
+        ...serializeStudent(student),
+        warning,
+      });
+    }
+
+    if (!createdStudents.length) {
+      return res.status(400).json({
+        message: "No student accounts were created from the uploaded Excel file.",
+        skippedRows,
+      });
+    }
+
+    return res.status(201).json({
+      students: createdStudents,
+      created: createdStudents.length,
+      skipped: skippedRows.length,
+      skippedRows,
+    });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Could not import student accounts." });
   }
 });
 

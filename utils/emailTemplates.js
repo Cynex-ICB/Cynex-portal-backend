@@ -99,24 +99,6 @@ function primaryButton(label, url) {
   </table>`;
 }
 
-function buildSignupOtpEmail({ name, otp }) {
-  return {
-    subject: "Verify your Cynex portal account",
-    text: `Hello ${name}, your Cynex portal verification OTP is ${otp}. It expires in 10 minutes.`,
-    html: emailShell({
-      title: "Verify your account",
-      preheader: "Use this OTP to complete your Cynex portal signup.",
-      greeting: `Hello ${name},`,
-      intro: "Use the verification code below to complete your portal signup. This code is valid for 10 minutes.",
-      children: `<div style="margin:24px 0;padding:20px;border:1px solid #dbe4f0;border-radius:12px;background:#f8fafd;text-align:center;">
-        <div style="font-size:12px;line-height:16px;color:#6d7b91;font-weight:800;letter-spacing:0.08em;text-transform:uppercase;">Verification OTP</div>
-        <div style="margin-top:8px;font-size:34px;line-height:42px;color:#10233f;font-weight:900;letter-spacing:0.18em;">${escapeHtml(otp)}</div>
-      </div>`,
-      footerNote: "If you did not request this signup, you can safely ignore this email.",
-    }),
-  };
-}
-
 function buildPasswordResetEmail({ name, resetUrl }) {
   return {
     subject: "Reset your Cynex portal password",
@@ -158,4 +140,28 @@ function buildTeacherAccountEmail({ name, email, teacherId, role, password }) {
   };
 }
 
-export { buildPasswordResetEmail, buildSignupOtpEmail, buildTeacherAccountEmail };
+function buildStudentAccountEmail({ name, email, usn, semester, password }) {
+  const loginUrl = getClientUrl();
+
+  return {
+    subject: "Your Cynex portal student account has been created",
+    text: `Hello ${name}, your student account has been created on Cynex portal. Login: ${loginUrl}. Email: ${email}. USN: ${usn}. Semester: ${semester}. Temporary password: ${password}.`,
+    html: emailShell({
+      title: "Student account created",
+      preheader: "Your Cynex portal student account is ready.",
+      greeting: `Hello ${name},`,
+      intro: "Your student account has been created on the department portal. Use the credentials below to sign in.",
+      children: `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:10px 0 6px;border-top:1px solid #e3eaf3;border-bottom:1px solid #e3eaf3;">
+          ${detailRow("Portal Role", "Student")}
+          ${detailRow("Email", email)}
+          ${detailRow("USN", usn)}
+          ${detailRow("Semester", `Semester ${semester}`)}
+          ${detailRow("Temporary Password", password)}
+        </table>
+        ${primaryButton("Open Portal", loginUrl)}`,
+      footerNote: "Please sign in with this temporary password and reset it from the password reset flow if needed.",
+    }),
+  };
+}
+
+export { buildPasswordResetEmail, buildStudentAccountEmail, buildTeacherAccountEmail };

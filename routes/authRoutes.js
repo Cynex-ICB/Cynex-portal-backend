@@ -1,11 +1,9 @@
 import crypto from "crypto";
-import bcrypt from "bcryptjs";
 import express from "express";
 import jwt from "jsonwebtoken";
-import SignupOtp from "../models/SignupOtp.js";
 import User from "../models/User.js";
 import protect from "../middleware/authMiddleware.js";
-import { buildPasswordResetEmail, buildSignupOtpEmail } from "../utils/emailTemplates.js";
+import { buildPasswordResetEmail } from "../utils/emailTemplates.js";
 import sendEmail from "../utils/sendEmail.js";
 
 const router = express.Router();
@@ -103,10 +101,6 @@ function hashValue(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function createOtp() {
-  return String(crypto.randomInt(100000, 1000000));
-}
-
 function getClientUrl() {
   return (process.env.CLIENT_URL || "https://cynexicb.com").replace(/\/$/, "");
 }
@@ -135,122 +129,11 @@ router.post("/email-access", async (req, res) => {
 });
 
 router.post("/signup", async (req, res) => {
-  try {
-    const { name, collegeEmail, password, usn, semester } = req.body;
-
-    if (!name || !collegeEmail || !password) {
-      return res.status(400).json({ message: "Name, college email, and password are required." });
-    }
-
-    if (password.length < 8) {
-      return res.status(400).json({ message: "Password must be at least 8 characters." });
-    }
-
-    const normalizedEmail = collegeEmail.toLowerCase().trim();
-
-    if (!isAllowedCollegeEmail(normalizedEmail)) {
-      return res.status(400).json({
-        message: "College email ID must match the 4ALXXIC0XX pattern.",
-      });
-    }
-
-    const role = getRoleForEmail(normalizedEmail);
-
-    const existingUser = await User.findOne({ collegeEmail: normalizedEmail });
-    if (existingUser) {
-      return res.status(409).json({ message: "An account with this college email already exists." });
-    }
-
-    const semesterNumber = parseInt(semester);
-
-    if (role === "student" && (!usn || Number.isNaN(semesterNumber) || semesterNumber < 1 || semesterNumber > 8)) {
-      return res.status(400).json({ message: "USN and semester are required for student signup." });
-    }
-
-    const otp = createOtp();
-    const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
-    const pendingSignup = {
-      name,
-      collegeEmail: normalizedEmail,
-      passwordHash: await bcrypt.hash(password, 12),
-      otpHash: hashValue(otp),
-      role,
-      expiresAt,
-    };
-
-    // Add student-specific fields if not admin
-    if (role === "student") {
-      pendingSignup.usn = usn ? usn.trim().toUpperCase() : "";
-      pendingSignup.semester = semesterNumber;
-    }
-
-    await SignupOtp.findOneAndUpdate(
-      { collegeEmail: normalizedEmail },
-      pendingSignup,
-      { upsert: true, new: true, setDefaultsOnInsert: true }
-    );
-
-    await sendEmail({
-      to: normalizedEmail,
-      ...buildSignupOtpEmail({ name, otp }),
-    });
-
-    return res.status(200).json({
-      message: "OTP sent to your college email. Enter it to complete signup.",
-      requiresOtp: true,
-      collegeEmail: normalizedEmail,
-    });
-  } catch (error) {
-    return res.status(500).json({ message: error.message || "Signup failed." });
-  }
+  return res.status(410).json({ message: "Public signup is disabled. Contact the master admin for account access." });
 });
 
 router.post("/verify-signup", async (req, res) => {
-  try {
-    const { collegeEmail, otp } = req.body;
-
-    if (!collegeEmail || !otp) {
-      return res.status(400).json({ message: "College email and OTP are required." });
-    }
-
-    const normalizedEmail = collegeEmail.toLowerCase().trim();
-
-    if (!isAllowedCollegeEmail(normalizedEmail)) {
-      return res.status(400).json({
-        message: "College email ID must match the 4ALXXIC0XX pattern.",
-      });
-    }
-
-    const pendingSignup = await SignupOtp.findOne({ collegeEmail: normalizedEmail });
-
-    if (!pendingSignup || pendingSignup.expiresAt < new Date()) {
-      return res.status(400).json({ message: "OTP is invalid or expired. Please signup again." });
-    }
-
-    if (pendingSignup.otpHash !== hashValue(String(otp).trim())) {
-      return res.status(400).json({ message: "Invalid OTP." });
-    }
-
-    const existingUser = await User.findOne({ collegeEmail: normalizedEmail });
-    if (existingUser) {
-      await pendingSignup.deleteOne();
-      return res.status(409).json({ message: "An account with this college email already exists." });
-    }
-
-    const user = await User.create({
-      name: pendingSignup.name,
-      collegeEmail: pendingSignup.collegeEmail,
-      password: pendingSignup.passwordHash,
-      role: pendingSignup.role,
-      usn: pendingSignup.usn,
-      semester: pendingSignup.semester,
-    });
-
-    await pendingSignup.deleteOne();
-    return sendAuthResponse(res, user, 201);
-  } catch (error) {
-    return res.status(500).json({ message: error.message || "OTP verification failed." });
-  }
+  return res.status(410).json({ message: "Public signup is disabled. Contact the master admin for account access." });
 });
 
 router.post("/login", async (req, res) => {
