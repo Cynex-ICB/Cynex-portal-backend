@@ -1,0 +1,62 @@
+name: Deploy to VPS
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'  # Using Node.js 20 LTS, adjust if your project requires a different version
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Deploy to VPS via SSH
+        env:
+          SSH_PRIVATE_KEY: ${{ secrets.SSH_PRIVATE_KEY }}
+          SERVER_USER: ${{ secrets.SERVER_USER }}
+          SERVER_HOST: ${{ secrets.SERVER_HOST }}
+          SERVER_PORT: ${{ secrets.SERVER_PORT }}
+          APP_PATH: ${{ secrets.APP_PATH }}
+          PM2_PROCESS_NAME: ${{ secrets.PM2_PROCESS_NAME }}
+        run: |
+          # Set up SSH
+          mkdir -p ~/.ssh
+          echo "$SSH_PRIVATE_KEY" > ~/.ssh/id_rsa
+          chmod 600 ~/.ssh/id_rsa
+          ssh-keyscan -p $SERVER_PORT $SERVER_HOST >> ~/.ssh/known_hosts
+
+          # Deploy commands
+          ssh -p $SERVER_PORT $SERVER_USER@$SERVER_HOST << EOF
+            set -e
+            echo "Deploying to $APP_PATH"
+            cd $APP_PATH
+            
+            # Pull latest code
+            git fetch origin
+            git reset --hard origin/main
+            
+            # Install dependencies
+            npm ci --production
+            
+            # Restart PM2 process
+            if pm2 list | grep -q "$PM2_PROCESS_NAME"; then
+              echo "Restarting existing PM2 process: $PM2_PROCESS_NAME"
+              pm2 restart $PM2_PROCESS_NAME
+            else
+              echo "Starting new PM2 process: $PM2_PROCESS_NAME"
+              pm2 start server.js --name $PM2_PROCESS_NAME
+              pm2 save
+            fi
+            
+            # Show status
+            pm2 show $PM2_PROCESS_NAME
+          EOF
