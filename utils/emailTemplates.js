@@ -1,5 +1,6 @@
 function getClientUrl() {
   return (process.env.CLIENT_URL || "http://cynexicb.com")
+    .split(",")[0]
     .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
     .replace(/\/$/, "");
 }
