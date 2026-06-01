@@ -247,7 +247,8 @@ router.post(
     }
 
     const questions = await Question.find({ assessment_id: assessment._id });
-    const evaluated = await evaluateAttempt(attempt, assessment, questions);
+    const remarks = req.body?.remarks || "";
+    const evaluated = await evaluateAttempt(attempt, assessment, questions, remarks);
     res.json({ attempt: evaluated });
   }),
 );

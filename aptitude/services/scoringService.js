@@ -1,6 +1,6 @@
 import StudentAnswer from "../models/StudentAnswer.js";
 
-export async function evaluateAttempt(attempt, assessment, questions) {
+export async function evaluateAttempt(attempt, assessment, questions, remarks = "") {
   const savedAnswers = await StudentAnswer.find({ attempt_id: attempt._id });
   const answerMap = new Map(
     savedAnswers.map((answer) => [answer.question_id.toString(), answer]),
@@ -42,6 +42,7 @@ export async function evaluateAttempt(attempt, assessment, questions) {
   attempt.percentage = percentage;
   attempt.status = "submitted";
   attempt.submitted_at = new Date();
+  if (remarks) attempt.remarks = remarks;
   await attempt.save();
 
   return attempt;

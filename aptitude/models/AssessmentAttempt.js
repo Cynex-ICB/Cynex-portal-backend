@@ -19,6 +19,7 @@ const assessmentAttemptSchema = new mongoose.Schema(
     extra_time_minutes: { type: Number, default: 0, min: 0 },
     score: { type: Number, default: 0 },
     percentage: { type: Number, default: 0 },
+    remarks: { type: String, default: "" },
     status: {
       type: String,
       enum: ["in_progress", "submitted"],
