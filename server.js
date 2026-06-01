@@ -9,6 +9,8 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import cieRoutes from "./routes/cieRoutes.js";
+import aptitudeAdminRoutes from "./aptitude/routes/adminRoutes.js";
+import aptitudeStudentRoutes from "./aptitude/routes/studentRoutes.js";
 import { getUploadRoot } from "./utils/uploadStorage.js";
 
 dotenv.config({ path: ["server/.env", ".env"] });
@@ -22,7 +24,7 @@ const port = process.env.PORT || 5000;
 const isVercel = Boolean(process.env.VERCEL);
 const corsOptions = {
   origin(origin, callback) {
-    const allowedOrigins = [
+    const originEntries = [
       process.env.CLIENT_URL,
       "https://cynexicb.com",
       "https://www.cynexicb.com",
@@ -31,6 +33,12 @@ const corsOptions = {
       "http://127.0.0.1:5173",
       "http://127.0.0.1:5174",
     ].filter(Boolean);
+
+    const allowedOrigins = originEntries.flatMap((entry) =>
+      entry
+        .split(",")
+        .map((item) => item.trim())
+    );
 
     if (!origin || allowedOrigins.includes(origin)) {
       callback(null, true);
@@ -44,19 +52,6 @@ const corsOptions = {
   allowedHeaders: ["Content-Type", "Authorization"],
   optionsSuccessStatus: 204,
 };
-
-app.use((req, res, next) => {
-  res.setHeader("Access-Control-Allow-Origin", "https://cynexicb.com");
-  res.setHeader("Access-Control-Allow-Credentials", "true");
-  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,PATCH,DELETE,OPTIONS");
-  res.setHeader("Access-Control-Allow-Headers", "Content-Type,Authorization");
-
-  if (req.method === "OPTIONS") {
-    return res.status(204).end();
-  }
-
-  next();
-});
 
 app.use(cors(corsOptions));
 
@@ -81,16 +76,16 @@ app.use("/api/subjects", subjectRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/cie-marks", cieRoutes);
-
-app.use("/api/{*splat}", (req, res) => {
-  res.status(404).json({
-    message: `API route not found: ${req.method} ${req.originalUrl}`,
-  });
-});
+app.use("/api/aptitude/admin", aptitudeAdminRoutes);
+app.use("/api/aptitude/student", aptitudeStudentRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
-  res.status(500).json({ message: "Server error." });
+  const statusCode = err.statusCode || 500;
+  res.status(statusCode).json({
+    message: err.message || "Server error.",
+    details: err.details || null,
+  });
 });
 
 connectDB()

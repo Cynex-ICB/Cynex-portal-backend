@@ -1,9 +1,4 @@
-function getClientUrl() {
-  return (process.env.CLIENT_URL || "http://cynexicb.com")
-    .split(",")[0]
-    .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
-    .replace(/\/$/, "");
-}
+import { getClientUrl } from "./clientUrl.js";
 
 function getPortalName() {
   return process.env.PORTAL_NAME || "Cynex  Portal";

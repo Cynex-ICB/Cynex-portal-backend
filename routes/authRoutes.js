@@ -72,12 +72,7 @@ function hashValue(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
 
-function getClientUrl() {
-  return (process.env.CLIENT_URL || "http://cynexicb.com")
-    .split(",")[0]
-    .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
-    .replace(/\/$/, "");
-}
+import { getClientUrl } from "../utils/clientUrl.js";
 
 router.post("/email-access", async (req, res) => {
   return res.json({ allowed: true });

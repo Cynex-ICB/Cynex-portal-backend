@@ -8,6 +8,7 @@ import Material from "../models/Material.js";
 import Subject from "../models/Subject.js";
 import User from "../models/User.js";
 import protect, { adminOnly } from "../middleware/authMiddleware.js";
+import { getClientUrl } from "../utils/clientUrl.js";
 import sendEmail from "../utils/sendEmail.js";
 import { buildAcademicContentEmail } from "../utils/emailTemplates.js";
 
@@ -130,13 +131,6 @@ async function removeMaterialFile(file = {}) {
       console.error("Could not delete uploaded file:", error.message);
     }
   });
-}
-
-function getClientUrl() {
-  return (process.env.CLIENT_URL || "http://cynexicb.com")
-    .split(",")[0]
-    .replace(/^https?:\/\/www\.cynexicb\.com/i, "http://cynexicb.com")
-    .replace(/\/$/, "");
 }
 
 function chunkList(items, chunkSize) {
