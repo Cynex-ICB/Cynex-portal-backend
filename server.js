@@ -9,8 +9,6 @@ import subjectRoutes from "./routes/subjectRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import cieRoutes from "./routes/cieRoutes.js";
-import aptitudeAdminRoutes from "./aptitude/routes/adminRoutes.js";
-import aptitudeStudentRoutes from "./aptitude/routes/studentRoutes.js";
 import { getUploadRoot } from "./utils/uploadStorage.js";
 
 dotenv.config({ path: ["server/.env", ".env"] });
@@ -76,8 +74,6 @@ app.use("/api/subjects", subjectRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/cie-marks", cieRoutes);
-app.use("/api/aptitude/admin", aptitudeAdminRoutes);
-app.use("/api/aptitude/student", aptitudeStudentRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
