@@ -26,6 +26,7 @@ const corsOptions = {
       process.env.CLIENT_URL,
       "https://cynexicb.com",
       "http://app.cynexicb.com",
+      "https://app.cynexicb.com",
       "https://www.app.cynexicb.com",
       "https://www.cynexicb.com",
       "http://localhost:5173",

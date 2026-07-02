@@ -12,7 +12,7 @@
       "headers": [
         {
           "key": "Access-Control-Allow-Origin",
-          "value": "https://cynexicb.com"
+          "value": "https://app.cynexicb.com"
         },
         {
           "key": "Access-Control-Allow-Methods",
