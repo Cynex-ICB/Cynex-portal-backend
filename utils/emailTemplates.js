@@ -117,10 +117,12 @@ function buildPasswordResetEmail({ name, resetUrl }) {
 function buildTeacherAccountEmail({ name, email, teacherId, role, password }) {
   const loginUrl = getClientUrl();
   const roleLabel = role === "master-admin" ? "Master Admin" : "Teacher Admin";
+  const teacherIdText = teacherId ? ` Teacher Employee ID: ${teacherId}.` : "";
+  const teacherIdRow = teacherId ? detailRow("Teacher Employee ID", teacherId) : "";
 
   return {
     subject: "Your Cynex portal admin account has been created",
-    text: `Hello ${name}, your ${roleLabel} account has been created on Cynex portal. Login: ${loginUrl}. Email: ${email}. Teacher Employee ID: ${teacherId}. Temporary password: ${password}.`,
+    text: `Hello ${name}, your ${roleLabel} account has been created on Cynex portal. Login: ${loginUrl}. Email: ${email}.${teacherIdText} Temporary password: ${password}.`,
     html: emailShell({
       title: "Admin account created",
       preheader: "Your Cynex portal teacher admin account is ready.",
@@ -129,7 +131,7 @@ function buildTeacherAccountEmail({ name, email, teacherId, role, password }) {
       children: `<table role="presentation" width="100%" cellspacing="0" cellpadding="0" style="margin:10px 0 6px;border-top:1px solid #e3eaf3;border-bottom:1px solid #e3eaf3;">
           ${detailRow("Portal Role", roleLabel)}
           ${detailRow("Email", email)}
-          ${detailRow("Teacher Employee ID", teacherId)}
+          ${teacherIdRow}
           ${detailRow("Temporary Password", password)}
         </table>
         ${primaryButton("Open Portal", loginUrl)}`,

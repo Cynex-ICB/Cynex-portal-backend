@@ -147,12 +147,12 @@ router.post("/admins", protect, masterAdminOnly, async (req, res) => {
   try {
     const { name, collegeEmail, teacherId, role, password } = req.body;
     const normalizedEmail = String(collegeEmail || "").trim().toLowerCase();
-    const normalizedTeacherId = normalizeUsn(teacherId);
+    const normalizedTeacherId = teacherId ? normalizeUsn(teacherId) : "";
     const adminRole = role === "master-admin" ? "master-admin" : "admin";
 
-    if (!name || !normalizedEmail || !normalizedTeacherId || !password) {
+    if (!name || !normalizedEmail || !password) {
       return res.status(400).json({
-        message: "Name, email, teacher employee ID, role, and temporary password are required.",
+        message: "Name, email, and temporary password are required.",
       });
     }
 
