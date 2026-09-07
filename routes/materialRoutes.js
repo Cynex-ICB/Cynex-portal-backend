@@ -4,9 +4,7 @@ import multer from "multer";
 import path from "path";
 import { Readable } from "stream";
 import { del, get, put } from "@vercel/blob";
-import Material from "../models/Material.js";
-import Subject from "../models/Subject.js";
-import User from "../models/User.js";
+import prisma, { withMongoId } from "../config/prisma.js";
 import protect, { adminOnly } from "../middleware/authMiddleware.js";
 import { getClientUrl } from "../utils/clientUrl.js";
 import sendEmail from "../utils/sendEmail.js";
@@ -25,6 +23,21 @@ const categoryLabels = {
   "study-material": "study material",
   notification: "notification",
 };
+
+function serializeMaterial(material) {
+  if (!material) return null;
+  const item = withMongoId(material);
+  if (item.createdBy) {
+    item.createdBy = withMongoId(item.createdBy);
+    if (item.createdBy.collegeEmail && !item.createdBy.email) {
+      item.createdBy.email = item.createdBy.collegeEmail;
+    }
+  }
+  if (item.subject) {
+    item.subject = withMongoId(item.subject);
+  }
+  return item;
+}
 
 function runInBackground(label, task) {
   setImmediate(() => {
@@ -111,6 +124,7 @@ function getDownloadFilename(file = {}) {
 }
 
 async function removeMaterialFile(file = {}) {
+  if (!file) return;
   if (file.pathname || file.url?.startsWith("http")) {
     try {
       await del(file.pathname || file.url);
@@ -148,10 +162,10 @@ async function notifyStudentsAboutMaterial(material) {
     return { notified: 0, previewOnly: false };
   }
 
-  const students = await User.find(
-    { role: "student", semester: material.semester },
-    "collegeEmail"
-  ).lean();
+  const students = await prisma.user.findMany({
+    where: { role: "student", semester: material.semester },
+    select: { collegeEmail: true },
+  });
   const emails = students.map((student) => student.collegeEmail).filter(Boolean);
 
   if (!emails.length) {
@@ -189,25 +203,39 @@ async function notifyStudentsAboutMaterial(material) {
 }
 
 router.get("/", protect, async (req, res) => {
-  const filter = {};
+  try {
+    const where = {};
 
-  if (req.user.role !== "admin") {
-    filter.semester = req.user.semester;
-  } else if (req.query.semester) {
-    filter.semester = parseInt(req.query.semester);
+    if (req.user.role !== "admin") {
+      where.semester = req.user.semester;
+    } else if (req.query.semester) {
+      where.semester = parseInt(req.query.semester);
+    }
+
+    const materials = await prisma.material.findMany({
+      where,
+      include: {
+        subject: {
+          select: { id: true, code: true, name: true, semester: true, instructor: true },
+        },
+        createdBy: {
+          select: { id: true, name: true, collegeEmail: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.json({ materials: materials.map(serializeMaterial) });
+  } catch (error) {
+    res.status(500).json({ message: error.message || "Could not fetch materials." });
   }
-
-  const materials = await Material.find(filter)
-    .sort({ createdAt: -1 })
-    .populate("subject", "code name semester instructor")
-    .populate("createdBy", "name collegeEmail");
-
-  res.json({ materials });
 });
 
 router.get("/:id/file", protect, async (req, res) => {
   try {
-    const material = await Material.findById(req.params.id);
+    const material = await prisma.material.findUnique({
+      where: { id: req.params.id },
+    });
 
     if (!material?.file?.url) {
       return res.status(404).json({ message: "File not found." });
@@ -250,10 +278,12 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
       return res.status(400).json({ message: "Title, type, and description are required." });
     }
 
-    let resolvedSemester = semester ? parseInt(semester) : undefined;
+    let resolvedSemester = semester ? parseInt(semester) : null;
 
     if (subject) {
-      const selectedSubject = await Subject.findById(subject);
+      const selectedSubject = await prisma.subject.findUnique({
+        where: { id: subject },
+      });
       if (!selectedSubject) {
         return res.status(400).json({ message: "Selected subject was not found." });
       }
@@ -262,32 +292,39 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
 
     blobFile = await uploadMaterialToBlob(req.file);
 
-    const material = await Material.create({
-      title,
-      category,
-      description,
-      subject: subject || undefined,
-      semester: resolvedSemester,
-      link,
-      dueDate: dueDate || undefined,
-      file: blobFile,
-      createdBy: req.user._id,
+    const material = await prisma.material.create({
+      data: {
+        title,
+        category,
+        description,
+        subjectId: subject || null,
+        semester: resolvedSemester,
+        link: link || "",
+        dueDate: dueDate ? new Date(dueDate) : null,
+        file: blobFile || null,
+        createdById: req.user.id || req.user._id,
+      },
+      include: {
+        subject: {
+          select: { id: true, code: true, name: true, semester: true, instructor: true },
+        },
+        createdBy: {
+          select: { id: true, name: true, collegeEmail: true },
+        },
+      },
     });
 
-    const populatedMaterial = await material.populate([
-      { path: "subject", select: "code name semester instructor" },
-      { path: "createdBy", select: "name email" },
-    ]);
+    const serialized = serializeMaterial(material);
 
     runInBackground("Academic content notification", async () => {
-      const notification = await notifyStudentsAboutMaterial(populatedMaterial);
+      const notification = await notifyStudentsAboutMaterial(material);
       console.log(
-        `Academic content notification queued post ${material._id}: ${notification.notified} recipient(s).`
+        `Academic content notification queued post ${material.id}: ${notification.notified} recipient(s).`
       );
     });
 
     return res.status(201).json({
-      material: populatedMaterial,
+      material: serialized,
       notification: {
         queued: true,
         message: "Post created. Student email notification is being sent in the background.",
@@ -300,16 +337,25 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
 });
 
 router.delete("/:id", protect, adminOnly, async (req, res) => {
-  const material = await Material.findById(req.params.id);
+  try {
+    const material = await prisma.material.findUnique({
+      where: { id: req.params.id },
+    });
 
-  if (!material) {
-    return res.status(404).json({ message: "Post not found." });
+    if (!material) {
+      return res.status(404).json({ message: "Post not found." });
+    }
+
+    const materialFile = material.file;
+    await prisma.material.delete({
+      where: { id: req.params.id },
+    });
+
+    runInBackground("Material file cleanup", () => removeMaterialFile(materialFile));
+    return res.json({ message: "Post deleted." });
+  } catch (error) {
+    return res.status(500).json({ message: error.message || "Could not delete post." });
   }
-
-  const materialFile = material.file?.toObject ? material.file.toObject() : material.file;
-  await material.deleteOne();
-  runInBackground("Material file cleanup", () => removeMaterialFile(materialFile));
-  return res.json({ message: "Post deleted." });
 });
 
 export default router;

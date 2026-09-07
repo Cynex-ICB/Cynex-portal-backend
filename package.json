@@ -6,9 +6,14 @@
   "scripts": {
     "dev": "node --watch server.js",
     "start": "node server.js",
-    "server": "node server.js"
+    "server": "node server.js",
+    "prisma:generate": "prisma generate",
+    "prisma:push": "prisma db push",
+    "prisma:studio": "prisma studio",
+    "migrate:data": "node scripts/migrate-mongo-to-postgres.js"
   },
   "dependencies": {
+    "@prisma/client": "6.19.3",
     "@vercel/blob": "^2.4.0",
     "bcryptjs": "^3.0.3",
     "cors": "^2.8.6",
@@ -19,5 +24,8 @@
     "multer": "^2.1.1",
     "nodemailer": "^8.0.7",
     "xlsx": "^0.18.5"
+  },
+  "devDependencies": {
+    "prisma": "6.19.3"
   }
 }

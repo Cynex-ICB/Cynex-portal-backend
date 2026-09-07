@@ -1,10 +1,12 @@
 import crypto from "crypto";
 import express from "express";
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import prisma, { withMongoId } from "../config/prisma.js";
 import protect from "../middleware/authMiddleware.js";
 import { buildPasswordResetEmail } from "../utils/emailTemplates.js";
 import sendEmail from "../utils/sendEmail.js";
+import { getClientUrl } from "../utils/clientUrl.js";
+import { comparePassword, hashPassword } from "../utils/password.js";
 
 const router = express.Router();
 const PASSWORD_RESET_EXPIRY_MS = 5 * 60 * 1000;
@@ -46,8 +48,10 @@ function createToken(userId) {
 }
 
 function serializeUser(user) {
+  const id = user.id || user._id;
   return {
-    id: user._id,
+    id,
+    _id: id,
     name: user.name,
     collegeEmail: user.collegeEmail,
     role: user.role,
@@ -62,8 +66,9 @@ function serializeUser(user) {
 }
 
 function sendAuthResponse(res, user, statusCode = 200) {
+  const id = user.id || user._id;
   return res.status(statusCode).json({
-    token: createToken(user._id),
+    token: createToken(id),
     user: serializeUser(user),
   });
 }
@@ -71,8 +76,6 @@ function sendAuthResponse(res, user, statusCode = 200) {
 function hashValue(value) {
   return crypto.createHash("sha256").update(value).digest("hex");
 }
-
-import { getClientUrl } from "../utils/clientUrl.js";
 
 router.post("/email-access", async (req, res) => {
   return res.json({ allowed: true });
@@ -96,15 +99,21 @@ router.post("/login", async (req, res) => {
 
     const normalizedEmail = collegeEmail.toLowerCase().trim();
 
-    const user = await User.findOne({ collegeEmail: normalizedEmail }).select("+password");
-    if (!user || !(await user.matchPassword(password))) {
+    const user = await prisma.user.findUnique({
+      where: { collegeEmail: normalizedEmail },
+    });
+
+    if (!user || !(await comparePassword(password, user.password))) {
       return res.status(401).json({ message: "Invalid college email or password." });
     }
 
     const configuredRole = getRoleForEmail(user.collegeEmail);
     if (user.role !== configuredRole && configuredRole !== "student") {
-      user.role = configuredRole;
-      await user.save({ validateBeforeSave: false });
+      const updatedUser = await prisma.user.update({
+        where: { id: user.id },
+        data: { role: configuredRole },
+      });
+      return sendAuthResponse(res, updatedUser);
     }
 
     return sendAuthResponse(res, user);
@@ -120,17 +129,27 @@ router.get("/me", protect, (req, res) => {
 router.post("/forgot-password", async (req, res) => {
   try {
     const { collegeEmail } = req.body;
-    const user = await User.findOne({ collegeEmail: collegeEmail?.toLowerCase().trim() }).select(
-      "+passwordResetToken +passwordResetExpires"
-    );
+    const normalizedEmail = collegeEmail?.toLowerCase().trim();
+
+    if (!normalizedEmail) {
+      return res.status(400).json({ message: "College email is required." });
+    }
+
+    const user = await prisma.user.findUnique({
+      where: { collegeEmail: normalizedEmail },
+    });
 
     if (user) {
       const resetToken = crypto.randomBytes(32).toString("hex");
       const hashedToken = hashValue(resetToken);
 
-      user.passwordResetToken = hashedToken;
-      user.passwordResetExpires = Date.now() + PASSWORD_RESET_EXPIRY_MS;
-      await user.save({ validateBeforeSave: false });
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          passwordResetToken: hashedToken,
+          passwordResetExpires: new Date(Date.now() + PASSWORD_RESET_EXPIRY_MS),
+        },
+      });
 
       const clientUrl = getClientUrl();
       const resetUrl = `${clientUrl}/reset?resetToken=${resetToken}`;
@@ -158,21 +177,28 @@ router.post("/reset-password/:token", async (req, res) => {
     }
 
     const hashedToken = hashValue(req.params.token);
-    const user = await User.findOne({
-      passwordResetToken: hashedToken,
-      passwordResetExpires: { $gt: Date.now() },
-    }).select("+passwordResetToken +passwordResetExpires");
+    const user = await prisma.user.findFirst({
+      where: {
+        passwordResetToken: hashedToken,
+        passwordResetExpires: { gt: new Date() },
+      },
+    });
 
     if (!user) {
       return res.status(400).json({ message: "Reset link is invalid or expired." });
     }
 
-    user.password = password;
-    user.passwordResetToken = undefined;
-    user.passwordResetExpires = undefined;
-    await user.save();
+    const hashedPassword = await hashPassword(password);
+    const updatedUser = await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        password: hashedPassword,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      },
+    });
 
-    return sendAuthResponse(res, user);
+    return sendAuthResponse(res, updatedUser);
   } catch (error) {
     return res.status(500).json({ message: error.message || "Password reset failed." });
   }

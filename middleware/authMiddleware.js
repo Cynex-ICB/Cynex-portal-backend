@@ -1,5 +1,5 @@
 import jwt from "jsonwebtoken";
-import User from "../models/User.js";
+import prisma, { withMongoId } from "../config/prisma.js";
 
 async function protect(req, res, next) {
   const authHeader = req.headers.authorization;
@@ -11,13 +11,16 @@ async function protect(req, res, next) {
 
   try {
     const decoded = jwt.verify(token, process.env.JWT_SECRET);
-    const user = await User.findById(decoded.id).select("-password");
+    const user = await prisma.user.findUnique({
+      where: { id: decoded.id },
+    });
 
     if (!user) {
       return res.status(401).json({ message: "Not authorized. User not found." });
     }
 
-    req.user = user;
+    delete user.password;
+    req.user = withMongoId(user);
     next();
   } catch {
     return res.status(401).json({ message: "Not authorized. Token invalid." });

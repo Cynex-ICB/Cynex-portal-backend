@@ -2,7 +2,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import path from "path";
-import connectDB from "./config/db.js";
+import { connectDB } from "./config/prisma.js";
 import authRoutes from "./routes/authRoutes.js";
 import materialRoutes from "./routes/materialRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
