@@ -379,7 +379,7 @@ router.post("/coordinators", protect, masterAdminOnly, async (req, res) => {
     }
 
     const teacher = await prisma.user.findFirst({
-      where: { id: teacherUserId, role: "admin" },
+      where: { id: teacherUserId, role: { in: ["admin", "master-admin"] } },
     });
     if (!teacher) {
       return res.status(404).json({ message: "Teacher admin not found." });
@@ -427,7 +427,7 @@ router.delete("/coordinators/:teacherUserId/:semester", protect, masterAdminOnly
     }
 
     const teacher = await prisma.user.findFirst({
-      where: { id: teacherUserId, role: "admin" },
+      where: { id: teacherUserId, role: { in: ["admin", "master-admin"] } },
     });
     if (!teacher) {
       return res.status(404).json({ message: "Teacher admin not found." });
@@ -477,7 +477,7 @@ router.post("/mentors", protect, masterAdminOnly, async (req, res) => {
     }
 
     const teacher = await prisma.user.findFirst({
-      where: { id: teacherUserId, role: "admin" },
+      where: { id: teacherUserId, role: { in: ["admin", "master-admin"] } },
     });
     if (!teacher) {
       return res.status(404).json({ message: "Teacher admin not found." });

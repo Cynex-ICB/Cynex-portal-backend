@@ -22,8 +22,12 @@ router.get("/", protect, async (req, res) => {
     const { semester } = req.query;
     const where = {};
 
-    if (semester) {
-      where.semester = parseInt(semester);
+    if (semester !== undefined && semester !== "") {
+      const semesterNum = Number(semester);
+      if (!Number.isInteger(semesterNum) || semesterNum < 1 || semesterNum > 8) {
+        return res.status(400).json({ message: "Semester must be between 1 and 8." });
+      }
+      where.semester = semesterNum;
     }
 
     const subjects = await prisma.subject.findMany({
@@ -45,7 +49,7 @@ router.get("/", protect, async (req, res) => {
 // Get subjects for a specific semester
 router.get("/semester/:semester", protect, async (req, res) => {
   try {
-    const semester = parseInt(req.params.semester);
+    const semester = Number(req.params.semester);
 
     if (isNaN(semester) || semester < 1 || semester > 8) {
       return res.status(400).json({ message: "Semester must be between 1 and 8." });
@@ -100,12 +104,12 @@ router.post("/", protect, masterAdminOnly, async (req, res) => {
       });
     }
 
-    const semesterNum = parseInt(semester);
+    const semesterNum = Number(semester);
     if (isNaN(semesterNum) || semesterNum < 1 || semesterNum > 8) {
       return res.status(400).json({ message: "Semester must be between 1 and 8." });
     }
 
-    const creditsNum = parseInt(credits);
+    const creditsNum = Number(credits);
     if (creditsNum < 1 || creditsNum > 6) {
       return res.status(400).json({ message: "Credits must be between 1 and 6." });
     }
@@ -166,7 +170,7 @@ router.patch("/:id", protect, masterAdminOnly, async (req, res) => {
     const updateData = {};
     if (name) updateData.name = name.trim();
     if (credits) {
-      const creditsNum = parseInt(credits);
+      const creditsNum = Number(credits);
       if (creditsNum < 1 || creditsNum > 6) {
         return res.status(400).json({ message: "Credits must be between 1 and 6." });
       }

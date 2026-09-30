@@ -1,5 +1,6 @@
 generator client {
-  provider = "prisma-client-js"
+  provider      = "prisma-client-js"
+  binaryTargets = ["native", "debian-openssl-3.0.x"]
 }
 
 datasource db {
@@ -28,6 +29,7 @@ model User {
   role                 String    @default("student")
   passwordResetToken   String?
   passwordResetExpires DateTime?
+  nvidiaApiKey         String?   @default("")
   createdAt            DateTime  @default(now())
   updatedAt            DateTime  @updatedAt
 
@@ -36,6 +38,9 @@ model User {
   createdContentPosts ContentPost[] @relation("ContentPostCreatedBy")
   cieMarks            CieMark[]     @relation("StudentCieMarks")
   createdCieMarks     CieMark[]     @relation("CieMarkCreatedBy")
+  attendanceRecords   Attendance[]  @relation("StudentAttendance")
+  markedAttendance    Attendance[]  @relation("AttendanceMarkedBy")
+  studySessions       StudySession[]
 
   @@index([role, semester])
   @@index([role, usn])
@@ -56,6 +61,7 @@ model Subject {
 
   materials Material[]
   cieMarks  CieMark[]
+  attendanceRecords Attendance[]
 
   @@unique([code, semester])
 }
@@ -115,4 +121,48 @@ model CieMark {
   updatedAt     DateTime @updatedAt
 
   @@unique([studentId, subjectId, cieNumber])
+}
+
+model Attendance {
+  id         String   @id @default(cuid())
+  studentId  String
+  student    User     @relation("StudentAttendance", fields: [studentId], references: [id], onDelete: Cascade)
+  subjectId  String
+  subject    Subject  @relation(fields: [subjectId], references: [id], onDelete: Cascade)
+  semester   Int
+  date       DateTime @db.Date
+  status     String   @default("present")
+  markedById String?
+  markedBy   User?    @relation("AttendanceMarkedBy", fields: [markedById], references: [id], onDelete: SetNull)
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  @@unique([studentId, subjectId, date])
+  @@index([subjectId, date])
+  @@index([studentId, semester])
+}
+
+model StudySession {
+  id        String   @id @default(cuid())
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  title     String   @default("New study session")
+  subject   String   @default("")
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  messages StudyMessage[]
+
+  @@index([userId, updatedAt(sort: Desc)])
+}
+
+model StudyMessage {
+  id        String   @id @default(cuid())
+  sessionId String
+  session   StudySession @relation(fields: [sessionId], references: [id], onDelete: Cascade)
+  role      String
+  content   String
+  createdAt DateTime @default(now())
+
+  @@index([sessionId, createdAt])
 }

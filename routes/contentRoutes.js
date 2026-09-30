@@ -78,7 +78,7 @@ function removeUploadedFile(filePath) {
   });
 }
 
-router.get("/", protect, async (req, res) => {
+router.get("/", async (req, res) => {
   try {
     const where = {};
 

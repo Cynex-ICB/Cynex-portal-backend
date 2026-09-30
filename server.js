@@ -2,16 +2,18 @@ import cors from "cors";
 import dotenv from "dotenv";
 import express from "express";
 import path from "path";
-import { connectDB } from "./config/prisma.js";
+import prisma, { connectDB } from "./config/prisma.js";
 import authRoutes from "./routes/authRoutes.js";
 import materialRoutes from "./routes/materialRoutes.js";
 import subjectRoutes from "./routes/subjectRoutes.js";
 import contentRoutes from "./routes/contentRoutes.js";
 import userRoutes from "./routes/userRoutes.js";
 import cieRoutes from "./routes/cieRoutes.js";
+import attendanceRoutes from "./routes/attendanceRoutes.js";
+import cynaiRoutes from "./routes/cynaiRoutes.js";
 import { getUploadRoot } from "./utils/uploadStorage.js";
 
-dotenv.config({ path: ["server/.env", ".env"] });
+dotenv.config();
 
 if (!process.env.JWT_SECRET) {
   throw new Error("JWT_SECRET is missing. Add it to your .env file.");
@@ -77,6 +79,10 @@ app.use("/api/subjects", subjectRoutes);
 app.use("/api/content", contentRoutes);
 app.use("/api/users", userRoutes);
 app.use("/api/cie-marks", cieRoutes);
+app.use("/api/attendance", attendanceRoutes);
+app.use("/api/cynai", cynaiRoutes);
+// Legacy path — kept so older clients keep working
+app.use("/api/study-companion", cynaiRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
@@ -97,6 +103,17 @@ connectDB()
     app.listen(port, () => {
       console.log(`API server running on http://localhost:${port}`);
     });
+
+    // Keep Neon from auto-suspending on idle: ping the DB every 4.5 minutes
+    // (suspend kicks in after ~5 minutes without queries).
+    const keepAlive = setInterval(async () => {
+      try {
+        await prisma.$queryRaw`SELECT 1`;
+      } catch (error) {
+        console.error("DB keep-alive ping failed:", error.message);
+      }
+    }, 270000);
+    keepAlive.unref?.();
   })
   .catch((error) => {
     console.error("Could not start server:", error.message);

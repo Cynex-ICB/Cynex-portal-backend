@@ -24,6 +24,10 @@ const categoryLabels = {
   notification: "notification",
 };
 
+function isAdminRole(role) {
+  return ["admin", "master-admin"].includes(role);
+}
+
 function serializeMaterial(material) {
   if (!material) return null;
   const item = withMongoId(material);
@@ -206,10 +210,14 @@ router.get("/", protect, async (req, res) => {
   try {
     const where = {};
 
-    if (req.user.role !== "admin") {
+    if (!isAdminRole(req.user.role)) {
       where.semester = req.user.semester;
-    } else if (req.query.semester) {
-      where.semester = parseInt(req.query.semester);
+    } else if (req.query.semester !== undefined && req.query.semester !== "") {
+      const semesterNum = Number(req.query.semester);
+      if (!Number.isInteger(semesterNum) || semesterNum < 1 || semesterNum > 8) {
+        return res.status(400).json({ message: "Semester must be between 1 and 8." });
+      }
+      where.semester = semesterNum;
     }
 
     const materials = await prisma.material.findMany({
@@ -278,7 +286,13 @@ router.post("/", protect, adminOnly, uploadMaterialFile, async (req, res) => {
       return res.status(400).json({ message: "Title, type, and description are required." });
     }
 
-    let resolvedSemester = semester ? parseInt(semester) : null;
+    let resolvedSemester = null;
+    if (semester !== undefined && semester !== "" && semester !== null) {
+      resolvedSemester = Number(semester);
+      if (!Number.isInteger(resolvedSemester) || resolvedSemester < 1 || resolvedSemester > 8) {
+        return res.status(400).json({ message: "Semester must be between 1 and 8." });
+      }
+    }
 
     if (subject) {
       const selectedSubject = await prisma.subject.findUnique({
