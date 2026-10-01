@@ -41,6 +41,7 @@ model User {
   attendanceRecords   Attendance[]  @relation("StudentAttendance")
   markedAttendance    Attendance[]  @relation("AttendanceMarkedBy")
   studySessions       StudySession[]
+  createdTimetables   Timetable[]   @relation("TimetableCreatedBy")
 
   @@index([role, semester])
   @@index([role, usn])
@@ -165,4 +166,25 @@ model StudyMessage {
   createdAt DateTime @default(now())
 
   @@index([sessionId, createdAt])
+}
+
+model Timetable {
+  id               String   @id @default(cuid())
+  academicYear     String   @default("2026-27")
+  scheme           String   @default("2022")
+  semester         Int
+  section          String   @default("A")
+  classCoordinator String   @default("")
+  roomNo           String   @default("")
+  effectiveDate    String   @default("")
+  timeSlots        Json     @default("[]")
+  grid             Json     @default("{}")
+  courses          Json     @default("[]")
+  createdById      String?
+  createdBy        User?    @relation("TimetableCreatedBy", fields: [createdById], references: [id], onDelete: SetNull)
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+
+  @@unique([semester, section, academicYear])
+  @@index([semester])
 }

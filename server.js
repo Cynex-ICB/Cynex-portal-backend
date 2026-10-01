@@ -11,6 +11,7 @@ import userRoutes from "./routes/userRoutes.js";
 import cieRoutes from "./routes/cieRoutes.js";
 import attendanceRoutes from "./routes/attendanceRoutes.js";
 import cynaiRoutes from "./routes/cynaiRoutes.js";
+import timetableRoutes from "./routes/timetableRoutes.js";
 import { getUploadRoot } from "./utils/uploadStorage.js";
 
 dotenv.config();
@@ -81,6 +82,7 @@ app.use("/api/users", userRoutes);
 app.use("/api/cie-marks", cieRoutes);
 app.use("/api/attendance", attendanceRoutes);
 app.use("/api/cynai", cynaiRoutes);
+app.use("/api/timetables", timetableRoutes);
 // Legacy path — kept so older clients keep working
 app.use("/api/study-companion", cynaiRoutes);
 
