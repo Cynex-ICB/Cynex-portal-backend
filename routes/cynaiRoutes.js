@@ -1,8 +1,11 @@
 import express from "express";
+import multer from "multer";
 import protect from "../middleware/authMiddleware.js";
 import prisma from "../config/prisma.js";
 import { streamText } from "ai";
 import { createOpenAICompatible } from "@ai-sdk/openai-compatible";
+import { getAllProviderModels, getProviderModels, resolveChatConfig } from "../utils/aiProviders.js";
+import { CHAT_UPLOAD_LIMITS, extractDocumentText, formatBytes } from "../utils/docText.js";
 const router = express.Router();
 
 const baseSystemPrompt = `You are CynAI, the AI study companion for the Department of Computer Science and Engineering (CSE ICB) at AIET. Your role is to help students prepare for exams and answer questions based on VTU-approved textbooks and course materials for the following subjects: IoT, Cyber Security, Blockchain, Embedded Systems, Computer Networks, Operating Systems, Database Management Systems, Cryptography, Software Engineering, and Machine Learning.
@@ -36,6 +39,29 @@ function toClientSession(session) {
     messages: (session.messages || []).map(toClientMessage),
   };
 }
+
+// List all AI providers with server-side model catalog.
+// GET /api/cynai/models -> all providers (live when server key is set,
+// curated fallback otherwise). GET /api/cynai/models/:providerId -> single.
+router.get("/models", protect, async (req, res) => {
+  try {
+    const providers = await getAllProviderModels();
+    res.json({ providers });
+  } catch (error) {
+    console.error("CynAI models list error:", error.message);
+    res.status(500).json({ message: "Could not load AI models." });
+  }
+});
+
+router.get("/models/:providerId", protect, async (req, res) => {
+  try {
+    const payload = await getProviderModels(req.params.providerId);
+    res.json(payload);
+  } catch (error) {
+    const status = error.statusCode || 500;
+    res.status(status).json({ message: error.message || "Could not load AI models." });
+  }
+});
 
 // List sessions for the logged-in user — lightweight, no messages.
 // Message bodies are loaded lazily per session to keep this fast.
@@ -140,19 +166,57 @@ router.delete("/sessions/:id", protect, async (req, res) => {
   }
 });
 
-// Chat within a session — streams the answer, then persists both messages
-router.post("/chat", protect, async (req, res) => {
+// Chat attachments: memory-only, never stored on disk.
+// Supports text, PDF, DOCX, spreadsheets, and images (vision passthrough).
+const chatUpload = multer({
+  storage: multer.memoryStorage(),
+  limits: {
+    fileSize: CHAT_UPLOAD_LIMITS.maxBytesPerFile,
+    files: CHAT_UPLOAD_LIMITS.maxFiles,
+  },
+});
+
+function parseChatUpload(req, res, next) {
+  const contentType = req.headers["content-type"] || "";
+  if (!contentType.includes("multipart/form-data")) return next();
+  chatUpload.array("files", CHAT_UPLOAD_LIMITS.maxFiles)(req, res, (error) => {
+    if (error) {
+      return res.status(400).json({ message: error.message || "File upload failed." });
+    }
+    next();
+  });
+}
+
+function parseHistoryField(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value === "string" && value.trim()) {
+    try {
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
+    }
+  }
+  return [];
+}
+
+// Chat within a session — streams the answer, then persists both messages.
+// Proxied server-side so browsers never hit provider CORS (notably NVIDIA NIM).
+// Accepts JSON or multipart/form-data (field "files", up to 5 documents/images).
+// Body: { message, history?, subject?, sessionId?, title?, provider?, model? }
+router.post("/chat", protect, parseChatUpload, async (req, res) => {
   try {
-    const { message, history, subject, sessionId, title } = req.body;
+    const { message, history, subject, sessionId, title, provider: providerId, model: modelId } = req.body;
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return res.status(400).json({ message: "Question is required." });
     }
 
-    if (!process.env.NVIDIA_API_KEY) {
-      return res.status(503).json({
-        message: "CynAI is currently unavailable. AI service is not configured.",
-      });
+    let chatConfig;
+    try {
+      chatConfig = resolveChatConfig(providerId, modelId);
+    } catch (configError) {
+      return res.status(configError.statusCode || 503).json({ message: configError.message });
     }
 
     // Resolve or create the session under this user's id (metadata only —
@@ -183,12 +247,10 @@ router.post("/chat", protect, async (req, res) => {
 
     // Build context: prefer client history; fall back to stored messages only
     // when the client sent none (avoids loading the full thread on every send).
-    const clientHistory = Array.isArray(history)
-      ? history.filter(
-          (entry) =>
-            (entry.role === "user" || entry.role === "assistant") && entry.content
-        )
-      : [];
+    const clientHistory = parseHistoryField(history).filter(
+      (entry) =>
+        (entry.role === "user" || entry.role === "assistant") && entry.content
+    );
     let pastMessages = clientHistory;
     if (pastMessages.length === 0) {
       const stored = await prisma.studyMessage.findMany({
@@ -208,17 +270,70 @@ router.post("/chat", protect, async (req, res) => {
       });
     }
 
+    // Extract attached documents (text goes into the prompt, images go to
+    // the model as vision parts). Original message is stored as-is; only
+    // filenames are appended so reloaded threads stay readable.
+    const attachedFiles = Array.isArray(req.files) ? req.files : [];
+    const docSections = [];
+    const imageParts = [];
+    let charsUsed = 0;
+    for (const file of attachedFiles) {
+      try {
+        const extracted = await extractDocumentText(file);
+        if (extracted.kind === "image") {
+          imageParts.push({
+            type: "image",
+            image: `data:${file.mimetype};base64,${file.buffer.toString("base64")}`,
+          });
+          docSections.push(`[Image attached: ${file.originalname} (${formatBytes(file.size)}) — analyze it visually.]`);
+          continue;
+        }
+        const cleaned = String(extracted.text || "").replace(/\r/g, "").trim();
+        if (!cleaned) {
+          docSections.push(`[File attached: ${file.originalname} — no readable text found.]`);
+          continue;
+        }
+        const remaining = CHAT_UPLOAD_LIMITS.maxCharsTotal - charsUsed;
+        if (remaining <= 0) {
+          docSections.push(`[File attached: ${file.originalname} — skipped, total limit reached.]`);
+          continue;
+        }
+        const allowed = Math.min(CHAT_UPLOAD_LIMITS.maxCharsPerFile, remaining);
+        const wasTruncated = cleaned.length > allowed;
+        const slice = cleaned.slice(0, allowed);
+        charsUsed += slice.length;
+        docSections.push(
+          `[Attached file: ${file.originalname} (${formatBytes(file.size)})${wasTruncated ? " — truncated" : ""}]\n${slice}`
+        );
+      } catch (fileError) {
+        return res.status(400).json({ message: fileError.message });
+      }
+    }
+
+    const storedUserContent =
+      attachedFiles.length > 0
+        ? `${message}\n[Attached: ${attachedFiles.map((f) => f.originalname).join(", ")}]`
+        : message;
+
     // Persist the user message immediately
     await prisma.studyMessage.create({
-      data: { sessionId: session.id, role: "user", content: message },
+      data: { sessionId: session.id, role: "user", content: storedUserContent },
     });
 
     const provider = createOpenAICompatible({
-      apiKey: process.env.NVIDIA_API_KEY,
-      baseURL: process.env.NVIDIA_BASE_URL || "https://integrate.api.nvidia.com/v1",
+      apiKey: chatConfig.apiKey,
+      baseURL: chatConfig.baseURL,
+      ...(chatConfig.id === "openrouter"
+        ? {
+            headers: {
+              "HTTP-Referer": process.env.CLIENT_URL?.split(",")[0]?.trim() || "https://app.cynexicb.com",
+              "X-Title": "CynAI",
+            },
+          }
+        : {}),
     });
 
-    const model = provider(process.env.NVIDIA_MODEL || "meta/muse-glimmer-30b");
+    const model = provider(chatConfig.model);
 
     const messages = [];
     pastMessages.forEach((entry) => {
@@ -226,7 +341,28 @@ router.post("/chat", protect, async (req, res) => {
         messages.push({ role: entry.role, content: entry.content });
       }
     });
-    messages.push({ role: "user", content: message });
+    if (imageParts.length > 0) {
+      messages.push({
+        role: "user",
+        content: [
+          {
+            type: "text",
+            text:
+              docSections.length > 0
+                ? `${message}\n\n--- Attached documents ---\n${docSections.join("\n\n")}`
+                : message,
+          },
+          ...imageParts,
+        ],
+      });
+    } else if (docSections.length > 0) {
+      messages.push({
+        role: "user",
+        content: `${message}\n\n--- Attached documents ---\n${docSections.join("\n\n")}`,
+      });
+    } else {
+      messages.push({ role: "user", content: message });
+    }
 
     const activeSubject = typeof subject === "string" && subject ? subject : session.subject;
     const system = activeSubject
