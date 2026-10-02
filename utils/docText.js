@@ -4,7 +4,6 @@ import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 
 const require = createRequire(import.meta.url);
-const pdfParse = require("pdf-parse");
 
 export const CHAT_UPLOAD_LIMITS = {
   maxFiles: 5,
@@ -26,7 +25,13 @@ function truncate(text, max) {
 
 async function extractPdf(buffer) {
   const mod = require("pdf-parse");
-  // pdf-parse v2: new PDFParse({ data }).getText() -> { text }
+  // pdf-parse v1 (standard): callable function
+  const fn = typeof mod === "function" ? mod : mod?.default;
+  if (typeof fn === "function") {
+    const data = await fn(buffer);
+    return String(data.text || "");
+  }
+  // pdf-parse v2 fallback
   if (mod && mod.PDFParse) {
     const parser = new mod.PDFParse({ data: buffer });
     try {
@@ -40,10 +45,7 @@ async function extractPdf(buffer) {
       }
     }
   }
-  // pdf-parse v1 fallback: callable function
-  const fn = (mod && mod.default) || mod;
-  const data = await fn(buffer);
-  return String(data.text || "");
+  throw new Error("PDF parser could not be initialized.");
 }
 
 async function extractDocx(buffer) {

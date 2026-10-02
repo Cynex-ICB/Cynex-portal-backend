@@ -60,8 +60,6 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
-// Explicitly handle pre-flight OPTIONS for all routes
-app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "1mb" }));
 app.use("/assets", express.static(path.join(process.cwd(), "assets")));
