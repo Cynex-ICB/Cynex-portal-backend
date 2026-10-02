@@ -28,10 +28,12 @@ const corsOptions = {
     const originEntries = [
       process.env.CLIENT_URL,
       "https://cynexicb.com",
+      "http://cynexicb.com",
+      "https://www.cynexicb.com",
+      "http://www.cynexicb.com",
       "http://app.cynexicb.com",
       "https://app.cynexicb.com",
       "https://www.app.cynexicb.com",
-      "https://www.cynexicb.com",
       "http://localhost:5173",
       "http://localhost:5174",
       "http://127.0.0.1:5173",
@@ -58,6 +60,8 @@ const corsOptions = {
 };
 
 app.use(cors(corsOptions));
+// Explicitly handle pre-flight OPTIONS for all routes
+app.options("*", cors(corsOptions));
 
 app.use(express.json({ limit: "1mb" }));
 app.use("/assets", express.static(path.join(process.cwd(), "assets")));
@@ -88,6 +92,13 @@ app.use("/api/study-companion", cynaiRoutes);
 
 app.use((err, req, res, next) => {
   console.error(err);
+  // Ensure CORS headers are present even on error responses so the browser
+  // can read the error body instead of showing a generic CORS failure.
+  const origin = req.headers.origin;
+  if (origin) {
+    res.setHeader("Access-Control-Allow-Origin", origin);
+    res.setHeader("Access-Control-Allow-Credentials", "true");
+  }
   const statusCode = err.statusCode || 500;
   res.status(statusCode).json({
     message: err.message || "Server error.",
